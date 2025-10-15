@@ -52,7 +52,7 @@ class RenderTheme:
   trigger_dash_off: float = 4.0
 
   # Layout paddings
-  padding_left: int = 24
+  padding_left: int = 36
   padding_right: int = 4
   padding_top: int = 2
   padding_bottom: int = 18
