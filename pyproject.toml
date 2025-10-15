@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "monbot"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["monbot*"]
+
+[tool.isort]
+profile = "black"
+known_first_party = ["monbot"]
