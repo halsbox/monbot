@@ -85,7 +85,6 @@ wheels/
 .env
 .env.local
 
-# Zsh history
-.zsh_history
+cache/
 .jpg
 .png

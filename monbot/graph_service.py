@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import replace
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from monbot.items_index import ItemInfo
 from monbot.cache2 import CacheResult, ImageCache2
 from monbot.render import SkiaRenderer
 from monbot.utils import PALETTE_20, natural_key
@@ -83,13 +84,13 @@ class GraphService:
       items=items,
     )
 
-  def build_signature_from_items(self, hostid: str, items: List[Tuple[str, str, str]]) -> GraphSignature:
-    # items: [(itemid, name, color)]
-    sig_items: List[GraphItemSig] = []
-    for idx, (itemid, name, color) in enumerate(items):
+  @staticmethod
+  def build_signature_from_items(hostid: str, items: List[ItemInfo]) -> GraphSignature:
+    sig_items: list[GraphItemSig] = []
+    for idx, it in enumerate(items):
       sig_items.append(GraphItemSig(
-        itemid=itemid, color=color, calc_fnc=2, drawtype=0, sortorder=idx,
-        name=name, units="°C", value_type=0
+        itemid=it.itemid, color=it.color, calc_fnc=2, drawtype=0, sortorder=idx,
+        name=it.name, units=it.units or "", value_type=0
       ))
     return GraphSignature(graphid=f"ovitems:{hostid}", name="Overview", items=tuple(sig_items))
 
@@ -140,75 +141,9 @@ class GraphService:
         trigger_lines=trig_lines,
       )
 
-    result = await self.cache.get_or_fetch(key_parts, ttl, producer)
+    result = await self.cache.get_or_produce(key_parts, ttl, producer)
     return key_parts, ttl, result
 
-  async def get_overview_media(
-      self,
-      hostid: str,
-      host_graphids: List[str],
-      period_label: str,
-      width: int,
-      height: int,
-  ) -> Tuple[Dict[str, Any], int, CacheResult]:
-    # Align window
-    t_from, t_to, step = align_window(period_label)
-    ttl = step
-
-    # Build synthetic signature combining all host items
-    ov_sig = self.build_overview_signature(host_graphids)
-
-    sig_items: List[Tuple[str, str, int, int, int, str, str]] = []
-    sig_items_key: List[Tuple[str, str, int, int, int]] = []
-    itemids: List[str] = []
-    for it in ov_sig.items:
-      sig_items.append((it.itemid, it.color, it.calc_fnc, it.drawtype, it.sortorder, it.name, it.units))
-      sig_items_key.append((it.itemid, it.color, it.calc_fnc, it.drawtype, it.sortorder))
-      itemids.append(it.itemid)
-
-    shash = self._sig_hash(ov_sig.graphid, sig_items_key)
-
-    # Triggers for these items (only those with units will be rendered)
-    trig_list = self.zbx.get_trigger_lines_for_items(itemids)
-    items_with_units = {iid for (iid, _, _, _, _, _, units) in sig_items if units}
-    trig_lines_render: List[Tuple[float, int]] = []
-    trig_lines_key: List[Tuple[str, float, int]] = []
-    seen_trig_values: Set[float] = set()
-    for tl in trig_list:
-      if (tl.itemid in items_with_units) and (tl.value not in seen_trig_values):
-        seen_trig_values.add(tl.value)
-        trig_lines_render.append((tl.value, tl.priority))
-        trig_lines_key.append((tl.itemid, tl.value, tl.priority))
-    thr_hash = self._trig_hash(trig_lines_key) if trig_lines_key else ""
-
-    key_parts = {
-      "k": "overview",
-      "hostid": hostid,
-      "sig": shash,
-      "period": period_label,
-      "to": t_to,
-      "size": f"{width}x{height}",
-      "rv": "r5",
-      "thr": thr_hash,
-    }
-
-    def producer() -> bytes:
-      series = self.zbx.fetch_series(ov_sig, t_from, t_to)
-      envs = downsample_for_width(ov_sig, series, t_from, t_to, width)
-      image = self.renderer.render_png(
-        sig_graphid=ov_sig.graphid,
-        series_list=sig_items,
-        envelopes=envs,
-        t_from=t_from,
-        t_to=t_to,
-        width=width,
-        height=height,
-        trigger_lines=trig_lines_render,
-      )
-      return image
-
-    result = await self.cache.get_or_fetch(key_parts, ttl, producer)
-    return key_parts, ttl, result
 
   async def get_media(
       self,
@@ -271,7 +206,7 @@ class GraphService:
       )
       return image
 
-    result = await self.cache.get_or_fetch(key_parts, ttl, producer)
+    result = await self.cache.get_or_produce(key_parts, ttl, producer)
     return key_parts, ttl, result
 
   async def prefetch(self, graphid: str, period_label: str, width: int, height: int):
@@ -282,24 +217,25 @@ class GraphService:
       pass
 
   async def get_overview_media_from_items(
-      self, hostid: str, item_triplets: List[Tuple[str, str, str]], period_label: str, width: int, height: int
-  ):
+      self, hostid: str, items: List[ItemInfo], period_label: str, width: int, height: int
+  ) -> tuple[dict[str, str | int], int, CacheResult]:
     t_from, t_to, step = align_window(period_label)
     ttl = step
-    sig = self.build_signature_from_items(hostid, item_triplets)
-    sig_items = [(it.itemid, it.color, it.calc_fnc, it.drawtype, it.sortorder, it.name, it.units) for it in sig.items]
-    sig_items_key = [(it.itemid, it.color, it.calc_fnc, it.drawtype, it.sortorder) for it in sig.items]
-    shash = self._sig_hash(sig.graphid, sig_items_key)
+    graph_sig = self.build_signature_from_items(hostid, items)
+    graph_sig_items: Tuple[GraphItemSig, ...] = graph_sig.items
+    sig_items = [(it.itemid, it.color, it.calc_fnc, it.drawtype, it.sortorder, it.name, it.units) for it in graph_sig_items]
+    sig_items_key = [(it.itemid, it.color, it.calc_fnc, it.drawtype, it.sortorder) for it in graph_sig_items]
+    shash = self._sig_hash(graph_sig.graphid, sig_items_key)
     key_parts = {
       "k": "overview_items", "hostid": hostid, "sig": shash, "period": period_label, "to": t_to,
       "size": f"{width}x{height}", "rv": "r6",
     }
 
     def producer() -> bytes:
-      series = self.zbx.fetch_series(sig, t_from, t_to)
-      envs = downsample_for_width(sig, series, t_from, t_to, width)
-      return self.renderer.render_png(sig_graphid=sig.graphid, series_list=sig_items, envelopes=envs,
+      series = self.zbx.fetch_series(graph_sig, t_from, t_to)
+      envs = downsample_for_width(graph_sig, series, t_from, t_to, width)
+      return self.renderer.render_png(sig_graphid=graph_sig.graphid, series_list=sig_items, envelopes=envs,
                                       t_from=t_from, t_to=t_to, width=width, height=height, trigger_lines=None)
 
-    result = await self.cache.get_or_fetch(key_parts, ttl, producer)
+    result = await self.cache.get_or_produce(key_parts, ttl, producer)
     return key_parts, ttl, result

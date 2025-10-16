@@ -20,7 +20,7 @@ def build_hosts_keyboard(host_names: List[str], conv_type: str) -> InlineKeyboar
   return InlineKeyboardMarkup(rows)
 
 
-def build_graphs_keyboard(items: List[Tuple[str, str]], host_name: str) -> InlineKeyboardMarkup:
+def build_graphs_keyboard(items: List[Tuple[str, str]]) -> InlineKeyboardMarkup:
   items = sorted(items, key=lambda t: natural_key(t[1]))
   buttons = [InlineKeyboardButton(name, callback_data=f"{CB_GRAPH_ITEM}:{itemid}") for itemid, name in items]
   buttons.append(InlineKeyboardButton(BTN_DEVICE, callback_data=CB_RESTART))
@@ -28,7 +28,7 @@ def build_graphs_keyboard(items: List[Tuple[str, str]], host_name: str) -> Inlin
   return InlineKeyboardMarkup(rows)
 
 
-def build_time_keyboard_item(itemid: str, item_name: str, host_name: str) -> InlineKeyboardMarkup:
+def build_time_keyboard_item(itemid: str, host_name: str) -> InlineKeyboardMarkup:
   buttons = [InlineKeyboardButton(tr, callback_data=f"{CB_GRAPH_ITEM}:{itemid}:{tr}") for tr in TIME_RANGES]
   buttons.append(InlineKeyboardButton(BTN_MAINT, callback_data=f"{CB_GO_MAINT}:{itemid}"))
   buttons.append(InlineKeyboardButton(host_name, callback_data=f"{CB_GRAPH_HOST}:{host_name}"))
@@ -36,10 +36,10 @@ def build_time_keyboard_item(itemid: str, item_name: str, host_name: str) -> Inl
   return InlineKeyboardMarkup(rows)
 
 
-async def get_items_keyboard(hostid: Any, context: CallbackContext) -> InlineKeyboardMarkup:
-  msvc: MaintenanceService = context.application.bot_data[CTX_MSVC]
+async def get_maint_items_keyboard(hostid: Any, context: CallbackContext) -> InlineKeyboardMarkup:
+  msvc: MaintenanceService = context.application.bot_data[CTX_MAINT_SVC]
   items_idx: ItemsIndex = context.application.bot_data[CTX_ITEMS]
-  items = items_idx.items_for_hostid(hostid) if hostid else []
+  items = items_idx.items_by_hostid(hostid) if hostid else []
   active_set = await asyncio.to_thread(msvc.active_items_for_host, hostid) if hostid else set()
   buttons = []
   for it in items:
@@ -80,7 +80,7 @@ def maint_actions_kb(itemid: str, is_active: bool, with_graph_back: bool = True,
   return InlineKeyboardMarkup(rows)
 
 
-def maint_custom_kb(itemid: str) -> InlineKeyboardMarkup:
+def maint_custom_kb() -> InlineKeyboardMarkup:
   buttons = [InlineKeyboardButton(label, callback_data=f"{CB_MAINT_ADD}:{secs}") for label, secs in PRESET_CUSTOM_QUICK]
   rows = _chunk(buttons, 3)
   rows.append([InlineKeyboardButton(BTN_CANCEL, callback_data=CB_MAINT_CANCEL)])

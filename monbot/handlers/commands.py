@@ -32,7 +32,15 @@ async def help_cmd(update: Update, context: CallbackContext):
 
 async def start_register(update: Update, context: CallbackContext):
   db: UserDB = context.application.bot_data[CTX_DB]
-  user = update.effective_user
+  tg_user = update.effective_user
+  db_user_role = await db.get_role(tg_user.id)
+  if db_user_role:
+    await db.add_or_update_user(
+      tg_user.id, role=db_user_role, username=tg_user.username, first_name=tg_user.first_name, last_name=tg_user.last_name
+    )
+    await update.message.reply_text(START_EXISTING_USER.format(name=f"@{tg_user.username}", role=db_user_role))
+    return
+
   args = context.args or []
   if not args:
     await update.message.reply_text(START_INVITE_REQUIRED)
@@ -45,7 +53,7 @@ async def start_register(update: Update, context: CallbackContext):
     return
 
   await db.add_or_update_user(
-    user.id, role=role, username=user.username, first_name=user.first_name, last_name=user.last_name
+    tg_user.id, role=role, username=tg_user.username, first_name=tg_user.first_name, last_name=tg_user.last_name
   )
   await update.message.reply_text(START_INVITE_OK_FMT.format(role=role))
 
@@ -210,15 +218,15 @@ async def refresh(update: Update, context: CallbackContext):
   items_idx: ItemsIndex = context.application.bot_data[CTX_ITEMS]
   await items_idx.refresh()
 
-  msvc: MaintenanceService = context.application.bot_data[CTX_MSVC]
+  msvc: MaintenanceService = context.application.bot_data[CTX_MAINT_SVC]
   for hid, _disp in context.application.bot_data[CTX_ALLOW_HOSTS].items():
-    for it in items_idx.items_for_hostid(hid) or []:
+    for it in items_idx.items_by_hostid(hid) or []:
       try:
         await asyncio.to_thread(msvc.ensure_container, it.itemid)
       except Exception:
         pass
 
-  gsvc: GraphService = context.application.bot_data.get(CTX_GSVC)
+  gsvc: GraphService = context.application.bot_data.get(CTX_GRAPH_SVC)
   if gsvc:
     gsvc.clear_signature_cache()
 

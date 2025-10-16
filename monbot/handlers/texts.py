@@ -9,7 +9,7 @@ PERIODS_EMPTY = "—"
 ACCESS_DENIED = "Доступ запрещен. Попросите администратора выдать доступ."
 DEVICE_SELECT_TITLE = "Устройство:"  # used by /start
 NO_ITEMS_FOR_HOST = "Нет доступных датчиков для этого устройства."
-RESULT_FAST_ADDED = "Добавлен период обсулуживания на 24 часа, начиная с сейчас."
+RESULT_FAST_ADDED = "Добавлен период обслуживания на 24 часа, начиная с сейчас."
 RESULT_ENDED = "Активный период обслуживания завершен."
 # Split regex for parsing custom period input (non-capturing; safe for ISO dates)
 PERIOD_SPLIT_REGEX = r"(?:\n|;|\s+-\s+)"
@@ -112,6 +112,7 @@ HELP_ADMIN = (
 START_INVITE_REQUIRED = "Требуется приглашение. Используйте /start <otp> из ссылки приглашения."
 START_INVITE_INVALID = "Неверный или просроченный код приглашения."
 START_INVITE_OK_FMT = "Добро пожаловать. Ваша роль: {role}. Используйте /help."
+START_EXISTING_USER = "Привет, {name}. Ваша роль: {role}. Используйте /help."
 
 INVGEN_USAGE = "Использование: /invgen <role> [max_uses=1] [ttl_sec]"
 INVALID_ROLE = "Роль должна быть одна из: {roles}".format(roles=", ".join(VALID_ROLES))

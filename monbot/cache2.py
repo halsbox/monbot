@@ -117,7 +117,7 @@ class ImageCache2:
         if total <= target:
           break
 
-  async def get_or_fetch(
+  async def get_or_produce(
       self,
       key_parts: Dict[str, Any],
       ttl: int,
@@ -238,6 +238,5 @@ class ImageCache2:
 def _call_producer(producer: Callable[[], Union[bytes, Awaitable[bytes]]]) -> bytes:
   res = producer()
   if asyncio.iscoroutine(res):
-    # If someone accidentally passed async callable, run it here
-    return asyncio.get_event_loop().run_until_complete(res)  # defensive
-  return res  # type: ignore[return-value]
+    return asyncio.run(res)
+  return res

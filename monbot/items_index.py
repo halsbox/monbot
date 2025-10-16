@@ -47,23 +47,23 @@ class ItemsIndex:
       new_map[hostid] = host_items
     self._host_items = new_map
 
-  def items_for_host_name(self, host_name: str) -> List[ItemInfo]:
+  def items_by_host_name(self, host_name: str) -> List[ItemInfo]:
     hostid = next((hid for hid, disp in self._allow_hosts.items() if disp == host_name), None)
     if not hostid:
       return []
     return self._host_items.get(hostid, [])
 
-  def items_for_hostid(self, hostid: str) -> List[ItemInfo]:
+  def items_by_hostid(self, hostid: str) -> List[ItemInfo]:
     return self._host_items.get(hostid, [])
 
   def hostid_by_name(self, host_name: str) -> str | None:
     return next((hid for hid, disp in self._allow_hosts.items() if disp == host_name), None)
 
-  def item_name_by_id(self, itemid: Any) -> str | None:
-    info = self.item_info_by_id(itemid)
+  def get_item_name(self, itemid: Any) -> str | None:
+    info = self.get_item(itemid)
     return info.name if info else None
 
-  def item_info_by_id(self, itemid: Any) -> Optional[ItemInfo]:
+  def get_item(self, itemid: Any) -> Optional[ItemInfo]:
     iid = str(itemid)
     for host_items in self._host_items.values():
       for item in host_items:

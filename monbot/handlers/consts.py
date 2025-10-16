@@ -58,31 +58,30 @@ CB_MAINT_ACTION_KEYS = (
 # Context keys (graph)
 CTX_GRAPH_MSG_ID = "graph_msg_id"
 CTX_GRAPH_GRAPHID = "graph_graphid"
-CTX_GRAPH_HOST = "graph_host"
 CTX_GRAPH_PERIOD = "graph_period"
 CTX_GRAPH_ITEMID = "graph_itemid"
 CTX_GRAPH_ITEM_NAME = "graph_item_name"
 
 # Context keys (common)
+CTX_HOST_ID = "host_id"
+CTX_HOST_NAME = "host_name"
 CTX_ITEMS = "items"
 CTX_ALLOW_HOSTS = "allow_hosts"
 CTX_CACHE2 = "cache2"
-CTX_MSVC = "msvc"
-CTX_GSVC = "gsvc"
+CTX_MAINT_SVC = "maint_svc"
+CTX_GRAPH_SVC = "graph_svc"
 CTX_DB = "db"
 CTX_ZBX = "zbx"
 
 # Context keys (maintenance flow)
-MAINT_HOST_KEY = "maint_hostid"
-MAINT_HOST_NAME_KEY = "maint_host_name"
-MAINT_FLOW_KEY = "maint_flow"  # values: None | "await_period" | "await_confirm"
-MAINT_ITEM_KEY = "maint_itemid"
-MAINT_PENDING_ACTION = "maint_pending_action"
-MAINT_PENDING_START = "maint_pending_start"
-MAINT_PENDING_END = "maint_pending_end"
-MAINT_MSG_ID = "maint_msg_id"
-MAINT_FORCE_MSG_ID = "maint_force_msg_id"
-MAINT_REPLY_MSG_ID = "maint_reply_msg_id"
+CTX_MAINT_FLOW_KEY = "maint_flow"  # values: None | "await_period" | "await_confirm"
+CTX_MAINT_ITEM_KEY = "maint_itemid"
+CTX_MAINT_PENDING_ACTION = "maint_pending_action"
+CTX_MAINT_PENDING_START = "maint_pending_start"
+CTX_MAINT_PENDING_END = "maint_pending_end"
+CTX_MAINT_MSG_ID = "maint_msg_id"
+CTX_MAINT_FORCE_MSG_ID = "maint_force_msg_id"
+CTX_MAINT_REPLY_MSG_ID = "maint_reply_msg_id"
 
 # Context values (maintenance flow)
 MAINT_PENDING_ACTION_EXTEND = "extend"
@@ -97,6 +96,8 @@ PAT_GRAPH_ITEM_MATCHER = re.compile(rf"^{CB_GRAPH_ITEM}:(\d+)(?::({_TR_ALTS}))?$
 PAT_GO_MAINT = rf"^{CB_GO_MAINT}:\d+$"
 PAT_GO_MAINT_MATCHER = re.compile(rf"^{CB_GO_MAINT}:(\d+)$")
 PAT_GO_GRAPH = rf"^{CB_GO_GRAPH}:\d+$"
+
+PAT_GRAPH_HOST = rf"^{CB_GRAPH_HOST}:"
 
 PAT_MAINT_HOST = rf"^{CB_MAINT_HOST}:"
 PAT_MAINT_ITEM_OR_BACK_HOST = rf"^(?:{CB_MAINT_ITEM}:\d+|{CB_MAINT_BACK_HOST})$"

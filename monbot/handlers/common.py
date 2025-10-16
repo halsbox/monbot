@@ -1,7 +1,8 @@
 import logging
+import re
 import time
 from datetime import datetime
-from typing import Any, List, Tuple
+from typing import Any, Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
 import dateparser
@@ -36,12 +37,9 @@ def _chunk(buttons: List[InlineKeyboardButton], n: int) -> List[List[InlineKeybo
 
 async def error_handler(update: object, context: CallbackContext):
   exc = context.error
-  # Log full details
   logger.exception("Unhandled error: %s", exc)
-  # Optional: handle common case 'Image_process_failed' with a hint
   if isinstance(exc, BadRequest) and "Image_process_failed" in str(exc):
-    logger.error(
-      "Telegram failed to process image. Likely non-image bytes from Zabbix (auth/HTML). Check zabbix login and content-type validation logs.")
+    logger.error("Telegram failed to process image. Likely non-image bytes from Zabbix (auth/HTML).")
 
 
 def escape_markdown_v2(text: str) -> str:
@@ -114,7 +112,7 @@ def parse_date(text: str, tz: str | ZoneInfo) -> datetime | None:
   )
 
 
-def devide_and_prepare_periods(periods: List[Tuple[int, int]], limit: int) -> List[Dict[str, Any]]:
+def divide_and_prepare_periods(periods: List[Tuple[int, int]], limit: int) -> List[Dict[str, Any]]:
   cutoff = int(time.time()) - 10 * 365 * 24 * 3600
   now = int(time.time())
   filtered = [(s, e) for index, (s, e) in enumerate(periods) if s >= cutoff and index < limit]
@@ -158,7 +156,7 @@ def devide_and_prepare_periods(periods: List[Tuple[int, int]], limit: int) -> Li
 
 
 def format_periods(tz: ZoneInfo, periods: List[Tuple[int, int]], limit: int) -> List[str]:
-  groups = devide_and_prepare_periods(periods, limit)
+  groups = divide_and_prepare_periods(periods, limit)
   lines: List[str] = []
   for group in groups:
     lines.append(group['caption'])
@@ -184,7 +182,57 @@ def get_cb_data_val(data: str) -> str:
 
 
 def clean_flow_and_pending(context: CallbackContext) -> None:
-  context.user_data.pop(MAINT_FLOW_KEY, None)
-  context.user_data.pop(MAINT_PENDING_START, None)
-  context.user_data.pop(MAINT_PENDING_END, None)
-  context.user_data.pop(MAINT_PENDING_ACTION, None)
+  context.user_data.pop(CTX_MAINT_FLOW_KEY, None)
+  context.user_data.pop(CTX_MAINT_PENDING_START, None)
+  context.user_data.pop(CTX_MAINT_PENDING_END, None)
+  context.user_data.pop(CTX_MAINT_PENDING_ACTION, None)
+
+
+async def remove_msg_by_ctx_id(context: CallbackContext, chat_id: str | int, ctx_id: str) -> None:
+  msg_id = context.user_data.get(ctx_id)
+  if msg_id:
+    try:
+      await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+    except Exception:
+      pass
+    context.user_data.pop(ctx_id, None)
+
+
+async def clean_all_messages(update: Update, context: CallbackContext) -> None:
+  chat_id = update.effective_chat.id
+  for ctx_id in (CTX_MAINT_MSG_ID, CTX_GRAPH_MSG_ID):
+    msg_id = context.user_data.get(ctx_id)
+    if msg_id:
+      try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+      except Exception:
+        pass
+      context.user_data.pop(ctx_id, None)
+  cb_msg_id = getattr(getattr(getattr(update, "callback_query", None), "message", None), "message_id", None)
+  if cb_msg_id:
+    try:
+      await context.bot.delete_message(chat_id=chat_id, message_id=cb_msg_id)
+    except Exception:
+      pass
+
+
+async def check_user(update: Update, context: CallbackContext) -> bool:
+  return await is_allowed_user(context.application.bot_data[CTX_DB], update.effective_user.id)
+
+
+async def get_host_data(update: Update, context: CallbackContext, conv_type: str) -> Tuple[
+  str | None, int | str | None]:
+  if conv_type == CONV_TYPE_MAINT:
+    host_key = CB_MAINT_HOST
+  else:
+    host_key = CB_GRAPH_HOST
+  if not update.callback_query.data.startswith(f"{host_key}:"):
+    return None, None
+  host_name = get_cb_data_val(update.callback_query.data)
+  allow_hosts = context.application.bot_data[CTX_ALLOW_HOSTS]
+  if host_name not in allow_hosts.values():
+    return None, None
+  hostid = context.application.bot_data[CTX_ITEMS].hostid_by_name(host_name)
+  if not hostid:
+    return None, None
+  return host_name, hostid

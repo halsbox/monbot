@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -115,47 +115,42 @@ class UserDB:
       if not row:
         await db.execute(CREATE_USERS_SQL_V2)
       else:
-        # If old CHECK constraint contains only 'admin','user' -> migrate
         ddl = row[1] or ""
         if "CHECK" in ddl and "'maintainer'" not in ddl and "'viewer'" not in ddl:
           await db.execute("ALTER TABLE users RENAME TO users_old;")
           await db.execute(CREATE_USERS_SQL_V2)
-          # Map old rows: admin->admin; user->viewer; role_maint==1 -> maintainer (unless admin)
-          # best effort: columns may differ
           try:
-            # role_maint may exist or not
             await db.execute("""
-                             INSERT INTO users (telegram_id, role, username, first_name, last_name, tz, last_seen,
-                                                info_refreshed_at, created_at, updated_at)
-                             SELECT telegram_id,
-                                    CASE
-                                        WHEN role = 'admin' THEN 'admin'
-                                        WHEN COALESCE(role_maint, 0) = 1 THEN 'maintainer'
-                                        ELSE 'viewer'
-                                        END AS role_new,
-                                    username,
-                                    first_name,
-                                    last_name,
-                                    COALESCE(tz, 'Europe/Moscow'),
-                                    CURRENT_TIMESTAMP,
-                                    CURRENT_TIMESTAMP,
-                                    COALESCE(created_at, CURRENT_TIMESTAMP),
-                                    CURRENT_TIMESTAMP
-                             FROM users_old;
-                             """)
+              INSERT INTO users (telegram_id, role, username, first_name, last_name, tz, last_seen,
+                                 info_refreshed_at, created_at, updated_at)
+              SELECT telegram_id,
+                     CASE
+                       WHEN role = 'admin' THEN 'admin'
+                       WHEN COALESCE(role_maint, 0) = 1 THEN 'maintainer'
+                       ELSE 'viewer'
+                     END AS role_new,
+                     username,
+                     first_name,
+                     last_name,
+                     COALESCE(tz, 'Europe/Moscow'),
+                     CURRENT_TIMESTAMP,
+                     CURRENT_TIMESTAMP,
+                     COALESCE(created_at, CURRENT_TIMESTAMP),
+                     CURRENT_TIMESTAMP
+              FROM users_old;
+            """)
           except Exception:
-            # Minimal copy if columns differ
             await db.execute("""
-                             INSERT INTO users (telegram_id, role, username, first_name, last_name)
-                             SELECT telegram_id,
-                                    CASE WHEN role = 'admin' THEN 'admin' ELSE 'viewer' END,
-                                    username,
-                                    first_name,
-                                    last_name
-                             FROM users_old;
-                             """)
+              INSERT INTO users (telegram_id, role, username, first_name, last_name)
+              SELECT telegram_id,
+                     CASE WHEN role = 'admin' THEN 'admin' ELSE 'viewer' END,
+                     username, first_name, last_name
+              FROM users_old;
+            """)
           await db.execute("DROP TABLE users_old;")
+      # FIX: actually create invites and maintenance audit tables
       await db.execute(CREATE_INVITES_SQL)
+      await db.execute(CREATE_MAINT_AUDIT_SQL)
       await db.execute("PRAGMA foreign_keys=on;")
       await db.commit()
 
@@ -186,7 +181,8 @@ class UserDB:
     otp = secrets.token_urlsafe(16)
     expires_at = None
     if ttl_sec and ttl_sec > 0:
-      expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ttl_sec)).strftime("%Y-%m-%d %H:%M:%S")
+      # FIX: store naive UTC string consistently
+      expires_at = (datetime.utcnow() + timedelta(seconds=ttl_sec)).strftime("%Y-%m-%d %H:%M:%S")
     async with aiosqlite.connect(self.db_path) as db:
       await db.execute(
         "INSERT INTO invites (otp, role, max_uses, used_count, expires_at) VALUES (?,?,?,?,?)",
@@ -203,16 +199,39 @@ class UserDB:
         return None
       role, max_uses, used_count, expires_at = row
       if expires_at:
-        try:
-          if datetime.now(timezone.utc) > datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S"):
-            return None
-        except Exception:
-          pass
+        # FIX: compare naive UTC to naive UTC
+        exp_dt = datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S")
+        if datetime.utcnow() > exp_dt:
+          return None
       if used_count >= max_uses:
         return None
       await db.execute("UPDATE invites SET used_count = used_count + 1 WHERE otp=?", (otp,))
       await db.commit()
       return role
+
+  async def upsert_user_info_throttled(self, tg_user, min_interval_sec: int = 3600) -> None:
+    async with aiosqlite.connect(self.db_path) as db:
+      await db.execute("UPDATE users SET last_seen=CURRENT_TIMESTAMP WHERE telegram_id=?", (tg_user.id,))
+      async with db.execute("SELECT info_refreshed_at FROM users WHERE telegram_id=?", (tg_user.id,)) as cur:
+        row = await cur.fetchone()
+      need_refresh = True
+      if row and row[0]:
+        try:
+          prev = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")  # naive UTC as stored by sqlite
+          need_refresh = (datetime.utcnow() - prev).total_seconds() >= min_interval_sec
+        except Exception:
+          need_refresh = True
+      if need_refresh:
+        await db.execute("""
+          UPDATE users
+          SET username=?,
+              first_name=?,
+              last_name=?,
+              info_refreshed_at=CURRENT_TIMESTAMP,
+              updated_at=CURRENT_TIMESTAMP
+          WHERE telegram_id = ?
+        """, (tg_user.username, tg_user.first_name, tg_user.last_name, tg_user.id))
+      await db.commit()
 
   async def add_or_update_user(self, telegram_id: int, role: str, username=None, first_name=None, last_name=None):
     if role not in ROLE_LEVEL:
@@ -232,31 +251,6 @@ class UserDB:
                            last_seen= CURRENT_TIMESTAMP,
                            info_refreshed_at= CURRENT_TIMESTAMP
                        """, (telegram_id, role, username, first_name, last_name))
-      await db.commit()
-
-  async def upsert_user_info_throttled(self, tg_user, min_interval_sec: int = 3600) -> None:
-    async with aiosqlite.connect(self.db_path) as db:
-      # Touch last_seen always; update username/name if older than interval
-      await db.execute("UPDATE users SET last_seen=CURRENT_TIMESTAMP WHERE telegram_id=?", (tg_user.id,))
-      async with db.execute("SELECT info_refreshed_at FROM users WHERE telegram_id=?", (tg_user.id,)) as cur:
-        row = await cur.fetchone()
-      need_refresh = True
-      if row and row[0]:
-        try:
-          prev = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
-          need_refresh = (datetime.now(timezone.utc) - prev).total_seconds() >= min_interval_sec
-        except Exception:
-          need_refresh = True
-      if need_refresh:
-        await db.execute("""
-                         UPDATE users
-                         SET username=?,
-                             first_name=?,
-                             last_name=?,
-                             info_refreshed_at=CURRENT_TIMESTAMP,
-                             updated_at=CURRENT_TIMESTAMP
-                         WHERE telegram_id = ?
-                         """, (tg_user.username, tg_user.first_name, tg_user.last_name, tg_user.id))
       await db.commit()
 
   async def get_user(self, telegram_id: int) -> Optional[Tuple[int, str, str, str, str]]:

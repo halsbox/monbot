@@ -10,7 +10,7 @@ import numpy as np
 import numpy.typing as npt
 import skia
 
-from monbot.utils import compute_y_axis
+from monbot.utils import next_nice_step, nice_floor_step, prev_nice_step
 
 TRIGGER_COLORS = {
   0: skia.ColorSetARGB(255, 153, 153, 153),  # Not classified (gray)
@@ -677,3 +677,65 @@ class SkiaRenderer:
     )
     data = image.encodeToData(skia.kPNG, 100)
     return bytes(data) if data is not None else b""
+
+
+def compute_y_axis(ymin_data: float, ymax_data: float, min_ticks: int = 8, max_ticks: int = 14) -> Tuple[
+  float, float, float, List[float]]:
+  if not (math.isfinite(ymin_data) and math.isfinite(ymax_data)):
+    # fallback axis
+    return 0.0, 1.0, 1.0, [0.0, 1.0]
+  if ymax_data < ymin_data:
+    ymin_data, ymax_data = ymax_data, ymin_data
+  if ymax_data == ymin_data:
+    ymin_data -= 1.0
+    ymax_data += 1.0
+
+  min_ticks = max(int(min_ticks), 2)
+  max_ticks = max(int(max_ticks), min_ticks)
+
+  span = ymax_data - ymin_data
+  # Start from step targeting min_ticks intervals
+  raw_for_min = span / (min_ticks - 1)
+  step = nice_floor_step(raw_for_min)
+
+  # Align axis to this step
+  axis_min = math.floor(ymin_data / step) * step
+  axis_max = math.ceil(ymax_data / step) * step
+  cnt = int(round((axis_max - axis_min) / step)) + 1
+
+  # Too many ticks -> coarsen
+  while cnt > max_ticks:
+    step = next_nice_step(step)
+    axis_min = math.floor(ymin_data / step) * step
+    axis_max = math.ceil(ymax_data / step) * step
+    cnt = int(round((axis_max - axis_min) / step)) + 1
+
+  # Too few ticks -> finer
+  guard = 0
+  while cnt < min_ticks and guard < 50:
+    new_step = prev_nice_step(step)
+    if new_step <= 0 or abs(new_step - step) < 1e-12:
+      break
+    step = new_step
+    axis_min = math.floor(ymin_data / step) * step
+    axis_max = math.ceil(ymax_data / step) * step
+    cnt = int(round((axis_max - axis_min) / step)) + 1
+    guard += 1
+
+  # Build ticks inclusive from aligned bounds
+  if step != 0:
+    decimals = max(0, -int(math.floor(math.log10(abs(step)))))
+  else:
+    decimals = 0
+  decimals = min(decimals, 6)
+
+  ticks: List[float] = []
+  v = axis_min
+  for _ in range(2000):
+    if v > axis_max + 1e-12:
+      break
+    vv = 0.0 if abs(v) < 1e-12 else v
+    ticks.append(round(vv, decimals + 1))
+    v += step
+
+  return axis_min, axis_max, step, ticks
