@@ -263,7 +263,15 @@ async def report_cmd(update: Update, context: CallbackContext):
 
   when_text = " ".join(args[1:]).strip() if len(args) > 1 else ""
   if when_text:
-    dt = dateparser.parse(when_text, languages=["ru", "en"], settings={"TIMEZONE": str(tz)})
+    dt = dateparser.parse(
+      when_text,
+      languages=['ru', 'en'],
+      settings={
+        'DATE_ORDER': 'DMY',
+        'PREFER_DATES_FROM': 'future',
+        'TIMEZONE': str(tz),
+      }
+    )
     if not dt:
       await update.message.reply_text(REPORT_DATE_PARSE_FAIL)
       return
