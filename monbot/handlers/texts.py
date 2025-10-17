@@ -151,4 +151,3 @@ BTN_REPORT_CANCEL = "❌ Отмена"
 REPORT_LIST_TITLE = "Выберите отчёт:"
 REPORT_LIST_WEEKS_CAP = "Недели:"
 REPORT_LIST_MONTHS_CAP = "Месяцы:"
-/
