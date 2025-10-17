@@ -93,3 +93,22 @@ def build_report_confirm_kb(period_type: str, start_ts: int, end_ts: int) -> Inl
     [InlineKeyboardButton(BTN_REPORT_CANCEL, callback_data=CB_REPORT_CANCEL)],
   ]
   return InlineKeyboardMarkup(rows)
+
+def build_report_list_kb(week_buttons: list[tuple[str, int]], month_buttons: list[tuple[str, int]]) -> InlineKeyboardMarkup:
+  rows: list[list[InlineKeyboardButton]] = []
+
+  # Weeks
+  if week_buttons:
+    # Optional caption row (disabled button)
+    rows.append([InlineKeyboardButton(REPORT_LIST_WEEKS_CAP, callback_data=CB_REPORT_CANCEL)])
+    w_buttons = [InlineKeyboardButton(lbl, callback_data=f"{CB_REPORT_SEND}:week:{start_ts}") for lbl, start_ts in week_buttons]
+    rows.extend(_chunk(w_buttons, 2))
+
+  # Months
+  if month_buttons:
+    rows.append([InlineKeyboardButton(REPORT_LIST_MONTHS_CAP, callback_data=CB_REPORT_CANCEL)])
+    m_buttons = [InlineKeyboardButton(lbl, callback_data=f"{CB_REPORT_SEND}:month:{start_ts}") for lbl, start_ts in month_buttons]
+    rows.extend(_chunk(m_buttons, 2))
+
+  return InlineKeyboardMarkup(rows)
+

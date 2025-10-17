@@ -24,7 +24,7 @@ from monbot.cache2 import ImageCache2
 from monbot.config import *
 from monbot.graph_service import GraphService
 from monbot.handlers.commands import (
-  adduser, deluser, setrole,
+  adduser, deluser, report_send_action, setrole,
   help_cmd, invgen, listusers,
   refresh, report_cmd, report_confirm_action,
   settz, start_graphs, start_maint,
@@ -193,6 +193,7 @@ def main() -> None:
       CallbackQueryHandler(maint_action, pattern=PAT_MAINT_ACTIONS),
       CallbackQueryHandler(report_confirm_action, pattern=PAT_REPORT_CONFIRM),
       CallbackQueryHandler(report_confirm_action, pattern=rf"^{CB_REPORT_CANCEL}$"),
+      CallbackQueryHandler(report_send_action, pattern=PAT_REPORT_SEND),
     ],
     states={
       SELECTING: [
@@ -206,6 +207,7 @@ def main() -> None:
         CallbackQueryHandler(maint_action, pattern=PAT_MAINT_ACTIONS),
         CallbackQueryHandler(report_confirm_action, pattern=PAT_REPORT_CONFIRM),
         CallbackQueryHandler(report_confirm_action, pattern=rf"^{CB_REPORT_CANCEL}$"),
+        CallbackQueryHandler(report_send_action, pattern=PAT_REPORT_SEND),
       ],
     },
     fallbacks=[CallbackQueryHandler(start_over, pattern=rf"^{CB_RESTART}$")],

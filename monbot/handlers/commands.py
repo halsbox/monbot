@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -8,12 +8,12 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import CallbackContext, ConversationHandler
 
-from monbot.config import REPORT_DASHBOARD_ID, REPORT_STORAGE_DIR
+from monbot.config import REPORT_DASHBOARD_ID, REPORT_PREGEN_MONTHS, REPORT_PREGEN_WEEKS, REPORT_STORAGE_DIR
 from monbot.db import UserDB
 from monbot.graph_service import GraphService
 from monbot.handlers.common import escape_markdown_v2, format_duration, get_tz, is_allowed_user
 from monbot.handlers.consts import *
-from monbot.handlers.keyboards import build_hosts_keyboard, build_report_confirm_kb
+from monbot.handlers.keyboards import build_hosts_keyboard, build_report_confirm_kb, build_report_list_kb
 from monbot.handlers.texts import *
 from monbot.items_index import ItemsIndex
 from monbot.maintenance_service import MaintenanceService
@@ -254,6 +254,9 @@ async def report_cmd(update: Update, context: CallbackContext):
     period_type = "week"
   elif kind_raw.startswith(("m", "м")):
     period_type = "month"
+  elif kind_raw.startswith(("l", "c")):
+    await report_list_cmd(update, context)
+    return
   else:
     await update.message.reply_text(REPORT_BAD_PERIOD)
     return
@@ -350,3 +353,89 @@ async def report_confirm_action(update: Update, context: CallbackContext):
       await q.edit_message_text(str(e))
     except Exception:
       pass
+
+async def report_list_cmd(update: Update, context: CallbackContext):
+  db: UserDB = context.application.bot_data[CTX_DB]
+  if not await is_allowed_user(db, update.effective_user.id):
+    await update.message.reply_text(ACCESS_DENIED)
+    return
+
+  tz = await get_tz(update, context)
+  svc = ReportService(context.application.bot_data[CTX_ZBX], tz=tz)
+  now = datetime.now(tz)
+
+  # Weeks: last REPORT_PREGEN_WEEKS completed weeks
+  monday_this = now.date() - timedelta(days=(now.isoweekday() - 1))
+  week_buttons: list[tuple[str, int]] = []
+  for i in range(1, max(0, REPORT_PREGEN_WEEKS) + 1):
+    monday = monday_this - timedelta(days=7 * i)
+    s, e, _ = svc.week_bounds_by_any_date(monday)
+    sd = datetime.fromtimestamp(s, tz).date()
+    # human-friendly: week number and start..end-1
+    iso_year, iso_week, _w = sd.isocalendar()
+    ed = (datetime.fromtimestamp(e, tz).date() - timedelta(days=1))
+    label = f"Нед.{iso_week}/{iso_year} {sd.strftime('%d.%m')}–{ed.strftime('%d.%m')}"
+    week_buttons.append((label, s))
+
+  # Months: last REPORT_PREGEN_MONTHS completed months
+  y, m = now.year, now.month
+  month_buttons: list[tuple[str, int]] = []
+  for _ in range(max(0, REPORT_PREGEN_MONTHS)):
+    # previous month
+    m -= 1
+    if m == 0:
+      m = 12
+      y -= 1
+    any_day = date(y, m, 15)
+    s, e, _ = svc.month_bounds_by_any_date(any_day)
+    sd = datetime.fromtimestamp(s, tz).date()
+    label = sd.strftime("%Y-%m")
+    month_buttons.append((label, s))
+
+  kb = build_report_list_kb(week_buttons, month_buttons)
+  await update.message.reply_text(REPORT_LIST_TITLE, reply_markup=kb)
+
+async def report_send_action(update: Update, context: CallbackContext):
+  q = update.callback_query
+  await q.answer()
+  data = q.data or ""
+
+  # ignore captions/cancel
+  if data == CB_REPORT_CANCEL:
+    return
+
+  m = re.match(rf"^{CB_REPORT_SEND}:(week|month):(\d+)$", data)
+  if not m:
+    return
+  period_type = m.group(1)
+  start_ts = int(m.group(2))
+
+  db: UserDB = context.application.bot_data[CTX_DB]
+  tz = await get_tz(update, context)
+  svc = ReportService(context.application.bot_data[CTX_ZBX], tz=tz)
+
+  # Compute end_ts from start_ts robustly
+  if period_type == "week":
+    d = datetime.fromtimestamp(start_ts, tz).date()
+    s, e, _ = svc.week_bounds_by_any_date(d)
+  else:
+    d = datetime.fromtimestamp(start_ts, tz).date()
+    s, e, _ = svc.month_bounds_by_any_date(d)
+  period = ReportPeriod(start_ts=s, end_ts=e, label="")
+
+  # Ensure or reuse saved file
+  path = await svc.ensure_report_file(db, REPORT_DASHBOARD_ID, period_type, period, REPORT_STORAGE_DIR)
+
+  # Reuse Telegram file_id when available
+  rec = await db.get_report_record(REPORT_DASHBOARD_ID, period_type, start_ts)
+  cached_file_id = rec[1] if rec else None
+
+  caption = f"{datetime.fromtimestamp(s, tz).strftime(DT_FMT)} — {datetime.fromtimestamp(e, tz).strftime(DT_FMT)}"
+
+  if cached_file_id:
+    await q.message.reply_document(document=cached_file_id, caption=caption)
+  else:
+    with open(path, "rb") as f:
+      msg = await q.message.reply_document(document=f, filename=Path(path).name, caption=caption)
+    if msg and msg.document:
+      await db.set_report_file_id(REPORT_DASHBOARD_ID, period_type, start_ts, msg.document.file_id)

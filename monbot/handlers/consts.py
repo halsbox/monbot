@@ -91,7 +91,9 @@ MAINT_FLOW_AWAIT_CONFIRM = "await_confirm"
 # Reports callbacks
 CB_REPORT_CONFIRM = "report_confirm"      # report_confirm:{period}:{start_ts}:{end_ts}
 CB_REPORT_CANCEL = "report_cancel"        # report_cancel
+CB_REPORT_SEND = "report_send"  # report_send:{period}:{start_ts}
 
+PAT_REPORT_SEND = r"^report_send:(week|month):\d+$"
 PAT_REPORT_CONFIRM = r"^report_confirm:(week|month):\d+:\d+$"
 # Build patterns once, using TIME_RANGES from config
 _TR_ALTS = "|".join(map(re.escape, TIME_RANGES))

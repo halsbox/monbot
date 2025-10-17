@@ -87,21 +87,21 @@ HELP_VIEWER = (
   "Доступные команды:\n"
   "/graphs — графики\n"
   "/maint — обслуживание (только просмотр)\n"
-  "/report <week|month> [когда]\n"
+  "/report <list|week|month> [когда]\n"
   "/settz <TZ> — установить часовой пояс"
 )
 HELP_MAINTAINER = (
   "Доступные команды:\n"
   "/graphs — графики\n"
   "/maint — обслуживание\n"
-  "/report <week|month> [когда]\n"
+  "/report <list|week|month> [когда]\n"
   "/settz <TZ>"
 )
 HELP_ADMIN = (
   "Доступные команды:\n"
   "/graphs — графики\n"
   "/maint — обслуживание\n"
-  "/report <week|month> [когда]\n"
+  "/report <list|week|month> [когда]\n"
   "/settz <TZ>\n"
   "/listusers — список пользователей\n"
   "/invgen <role> [max_uses] [ttl_sec] — создать приглашение\n"
@@ -136,8 +136,8 @@ SETTZ_OK_FMT = "Установлен часовой пояс {tz}."
 REFRESH_DONE = "Индексы обновлены"
 
 # Reports
-REPORT_USAGE = "Использование: /report <week|month> [когда]"
-REPORT_BAD_PERIOD = "Первый аргумент должен быть 'week' или 'month'."
+REPORT_USAGE = "Использование: /report <list|week|month> [когда]"
+REPORT_BAD_PERIOD = "Первый аргумент должен быть 'list', 'week' или 'month'."
 REPORT_DATE_PARSE_FAIL = "Не удалось распознать дату. Примеры: '5 мая', 'авгут', '15.09.2025'."
 REPORT_CONFIRM_TITLE_WEEK = "Отчёт за неделю"
 REPORT_CONFIRM_TITLE_MONTH = "Отчёт за месяц"
@@ -146,3 +146,9 @@ REPORT_SENDING = "Формирую отчёт, пожалуйста подожд
 REPORT_CANCELLED = "Отчёт отменён."
 BTN_REPORT_CONFIRM = "✅ Сформировать"
 BTN_REPORT_CANCEL = "❌ Отмена"
+
+# Reports list
+REPORT_LIST_TITLE = "Выберите отчёт:"
+REPORT_LIST_WEEKS_CAP = "Недели:"
+REPORT_LIST_MONTHS_CAP = "Месяцы:"
+/
