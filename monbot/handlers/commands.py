@@ -1,18 +1,23 @@
 import asyncio
+from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import dateparser
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import CallbackContext, ConversationHandler
 
+from monbot.config import REPORT_DASHBOARD_ID, REPORT_STORAGE_DIR
 from monbot.db import UserDB
 from monbot.graph_service import GraphService
-from monbot.handlers.common import escape_markdown_v2, format_duration, is_allowed_user
+from monbot.handlers.common import escape_markdown_v2, format_duration, get_tz, is_allowed_user
 from monbot.handlers.consts import *
-from monbot.handlers.keyboards import build_hosts_keyboard
+from monbot.handlers.keyboards import build_hosts_keyboard, build_report_confirm_kb
 from monbot.handlers.texts import *
 from monbot.items_index import ItemsIndex
 from monbot.maintenance_service import MaintenanceService
+from monbot.report_service import ReportPeriod, ReportService
 
 
 async def help_cmd(update: Update, context: CallbackContext):
@@ -231,3 +236,109 @@ async def refresh(update: Update, context: CallbackContext):
     gsvc.clear_signature_cache()
 
   await update.message.reply_text(REFRESH_DONE)
+
+
+async def report_cmd(update: Update, context: CallbackContext):
+  db: UserDB = context.application.bot_data[CTX_DB]
+  if not await is_allowed_user(db, update.effective_user.id):
+    await update.message.reply_text(ACCESS_DENIED)
+    return
+
+  args = context.args or []
+  if not args:
+    await update.message.reply_text(REPORT_USAGE)
+    return
+
+  kind_raw = (args[0] or "").lower()
+  if kind_raw.startswith(("w", "н")):
+    period_type = "week"
+  elif kind_raw.startswith(("m", "м")):
+    period_type = "month"
+  else:
+    await update.message.reply_text(REPORT_BAD_PERIOD)
+    return
+
+  tz = await get_tz(update, context)
+  svc = ReportService(context.application.bot_data[CTX_ZBX], tz=tz)
+
+  when_text = " ".join(args[1:]).strip() if len(args) > 1 else ""
+  if when_text:
+    dt = dateparser.parse(when_text, languages=["ru", "en"], settings={"TIMEZONE": str(tz)})
+    if not dt:
+      await update.message.reply_text(REPORT_DATE_PARSE_FAIL)
+      return
+    d = dt.date()
+    if period_type == "week":
+      s, e, _ = svc.week_bounds_by_any_date(d)
+    else:
+      s, e, _ = svc.month_bounds_by_any_date(d)
+    period = ReportPeriod(start_ts=s, end_ts=e, label="")
+  else:
+    period = svc.last_week_period() if period_type == "week" else svc.last_month_period()
+
+  start_s = datetime.fromtimestamp(period.start_ts, tz).strftime(DT_FMT)
+  end_s = datetime.fromtimestamp(period.end_ts, tz).strftime(DT_FMT)
+  title = REPORT_CONFIRM_TITLE_WEEK if period_type == "week" else REPORT_CONFIRM_TITLE_MONTH
+  text = f"{title}\n{REPORT_CONFIRM_RANGE_FMT.format(start=start_s, end=end_s)}"
+
+  kb = build_report_confirm_kb(period_type, period.start_ts, period.end_ts)
+  await update.message.reply_text(text, reply_markup=kb)
+
+async def report_confirm_action(update: Update, context: CallbackContext):
+  q = update.callback_query
+  await q.answer()
+  data = q.data or ""
+
+  if data == CB_REPORT_CANCEL:
+    try:
+      await q.edit_message_text(REPORT_CANCELLED)
+    except Exception:
+      pass
+    return
+
+  m = re.match(rf"^{CB_REPORT_CONFIRM}:(week|month):(\d+):(\d+)$", data)
+  if not m:
+    return
+  period_type = m.group(1)
+  start_ts = int(m.group(2))
+  end_ts = int(m.group(3))
+
+  db: UserDB = context.application.bot_data[CTX_DB]
+  tz = await get_tz(update, context)
+  svc = ReportService(context.application.bot_data[CTX_ZBX], tz=tz)
+  period = ReportPeriod(start_ts=start_ts, end_ts=end_ts, label="")
+
+  # Fast existence check to decide whether to show waiting spinner
+  out_path = svc.resolve_report_path(REPORT_STORAGE_DIR, REPORT_DASHBOARD_ID, period_type, period)
+  already_exists = out_path.exists()
+  try:
+    # Remove keyboard first
+    await q.edit_message_reply_markup(reply_markup=None)
+    # Only show waiting text if we need to actually generate
+    if not already_exists:
+      await q.edit_message_text(REPORT_SENDING)
+  except Exception:
+    pass
+
+  # Ensure report exists (persist path in DB), offloaded in ReportService (see patch below)
+  path = await svc.ensure_report_file(db, REPORT_DASHBOARD_ID, period_type, period, REPORT_STORAGE_DIR)
+
+  # Reuse Telegram file_id if already uploaded
+  rec = await db.get_report_record(REPORT_DASHBOARD_ID, period_type, start_ts)
+  cached_file_id = rec[1] if rec else None
+
+  caption = f"{datetime.fromtimestamp(start_ts, tz).strftime(DT_FMT)} — {datetime.fromtimestamp(end_ts, tz).strftime(DT_FMT)}"
+
+  try:
+    if cached_file_id:
+      await q.message.reply_document(document=cached_file_id, caption=caption)
+    else:
+      with open(path, "rb") as f:
+        msg = await q.message.reply_document(document=f, filename=Path(path).name, caption=caption)
+      if msg and msg.document:
+        await db.set_report_file_id(REPORT_DASHBOARD_ID, period_type, start_ts, msg.document.file_id)
+  except Exception as e:
+    try:
+      await q.edit_message_text(str(e))
+    except Exception:
+      pass

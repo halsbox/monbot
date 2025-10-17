@@ -3,7 +3,9 @@ from __future__ import annotations
 import dataclasses
 import re
 import time
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import numpy.typing as npt
@@ -60,6 +62,36 @@ class GraphSignature:
   name: str
   items: Tuple[GraphItemSig, ...]  # ordered by sortorder ascending
 
+def fmt_dt_chart2(tz: ZoneInfo, ts: int) -> str:
+  return datetime.fromtimestamp(ts, tz).strftime("%Y-%m-%d %H:%M:%S")
+
+def fmt_uptime(total_seconds: int|float, locale: str = "ru") -> str:
+  """
+  Convert seconds -> "N days HH:MM:SS" with simple i18n for 'ru' and 'en'.
+  Example (ru): 18945480 -> "219 дней 06:38:00"
+  """
+  secs = max(0, int(total_seconds))
+  days = secs // 86400
+  rem = secs % 86400
+  hh = rem // 3600
+  mm = (rem % 3600) // 60
+  ss = rem % 60
+
+  if locale.lower().startswith("ru"):
+    # Russian plural forms: день, дня, дней
+    def ru_day_word(n: int) -> str:
+      n_abs = abs(n)
+      if n_abs % 10 == 1 and n_abs % 100 != 11:
+        return "день"
+      if 2 <= n_abs % 10 <= 4 and not (12 <= n_abs % 100 <= 14):
+        return "дня"
+      return "дней"
+
+    day_part = f"{days} {ru_day_word(days)}"
+  else:
+    day_part = f"{days} {'day' if days == 1 else 'days'}"
+
+  return f"{day_part}, {hh:02d}:{mm:02d}:{ss:02d}"
 
 def _estimate_sample_interval(clock: npt.NDArray[np.int64], is_trend: bool) -> int:
   if is_trend:

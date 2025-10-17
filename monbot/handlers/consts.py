@@ -88,7 +88,11 @@ MAINT_PENDING_ACTION_EXTEND = "extend"
 MAINT_PENDING_ACTION_ADD_NEW = "add_new"
 MAINT_FLOW_AWAIT_PERIOD = "await_period"
 MAINT_FLOW_AWAIT_CONFIRM = "await_confirm"
+# Reports callbacks
+CB_REPORT_CONFIRM = "report_confirm"      # report_confirm:{period}:{start_ts}:{end_ts}
+CB_REPORT_CANCEL = "report_cancel"        # report_cancel
 
+PAT_REPORT_CONFIRM = r"^report_confirm:(week|month):\d+:\d+$"
 # Build patterns once, using TIME_RANGES from config
 _TR_ALTS = "|".join(map(re.escape, TIME_RANGES))
 PAT_GRAPH_ITEM = rf"^{CB_GRAPH_ITEM}:\d+(?::(?:{_TR_ALTS}))?$"

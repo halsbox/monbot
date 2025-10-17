@@ -86,5 +86,8 @@ wheels/
 .env.local
 
 cache/
-.jpg
-.png
+reports/
+*.jpg
+*.png
+*.pdf
+*.json

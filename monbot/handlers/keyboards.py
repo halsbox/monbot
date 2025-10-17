@@ -85,3 +85,11 @@ def maint_custom_kb() -> InlineKeyboardMarkup:
   rows = _chunk(buttons, 3)
   rows.append([InlineKeyboardButton(BTN_CANCEL, callback_data=CB_MAINT_CANCEL)])
   return InlineKeyboardMarkup(rows)
+
+def build_report_confirm_kb(period_type: str, start_ts: int, end_ts: int) -> InlineKeyboardMarkup:
+  data = f"{CB_REPORT_CONFIRM}:{period_type}:{start_ts}:{end_ts}"
+  rows = [
+    [InlineKeyboardButton(BTN_REPORT_CONFIRM, callback_data=data)],
+    [InlineKeyboardButton(BTN_REPORT_CANCEL, callback_data=CB_REPORT_CANCEL)],
+  ]
+  return InlineKeyboardMarkup(rows)

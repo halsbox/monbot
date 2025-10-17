@@ -28,7 +28,12 @@ services:
       # Data/cache locations (override if you prefer different mount points)
       MONBOT_BASE_DIR: "/data"
       MONBOT_CACHE_DIR: "/cache"
+      MONBOT_REPORTS_DIR: "/reports"
       MONBOT_DB_PATH: "/data/monbot.db"
+      REPORT_META_TTL_SEC: "${REPORT_META_TTL_SEC:-3600}"
+      REPORT_WIDGETS_TTL_SEC: "${REPORT_WIDGETS_TTL_SEC:-3600}"
+      REPORT_DASHBOARD_ID: "${REPORT_DASHBOARD_ID:-19}"
     volumes:
       - ./data:/data
       - ./cache:/cache
+      - ./reports:/reports

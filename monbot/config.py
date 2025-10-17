@@ -48,3 +48,15 @@ MAINT_LIST_LIMIT = int(os.getenv("MAINT_LIST_LIMIT", "5"))
 DEFAULT_TZ = os.getenv("DEFAULT_TZ", "Europe/Moscow")
 MAINT_TAG_KEY = os.getenv("MAINT_TAG_KEY", "channel")
 ITEMS_REFRESH_SEC = int(os.getenv("ITEMS_REFRESH_SEC", "3600"))
+
+# Report storage and cache
+REPORT_STORAGE_DIR = Path(os.getenv("MONBOT_REPORTS_DIR", "/reports")).resolve()
+REPORT_META_TTL_SEC = int(os.getenv("REPORT_META_TTL_SEC", "3600"))
+REPORT_WIDGETS_TTL_SEC = int(os.getenv("REPORT_WIDGETS_TTL_SEC", "3600"))
+
+# Default dashboard for reports
+REPORT_DASHBOARD_ID = int(os.getenv("REPORT_DASHBOARD_ID", "19"))
+
+# Reports pre-generation (how many completed periods back to ensure)
+REPORT_PREGEN_WEEKS = int(os.getenv("REPORT_PREGEN_WEEKS", "8"))
+REPORT_PREGEN_MONTHS = int(os.getenv("REPORT_PREGEN_MONTHS", "12"))

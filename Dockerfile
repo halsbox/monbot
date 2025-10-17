@@ -37,10 +37,11 @@ COPY monbot /app/monbot
 # Default data/cache locations; can be overridden at runtime
 ENV MONBOT_BASE_DIR=/data \
     MONBOT_CACHE_DIR=/cache \
+    MONBOT_REPORTS_DIR=/reports \
     MONBOT_DB_PATH=/data/monbot.db
 
 # Prepare mount points
-RUN mkdir -p /data /cache && chown -R ${APP_USER}:${APP_USER} /data /cache /app
+RUN mkdir -p /data /cache /reports && chown -R ${APP_USER}:${APP_USER} /data /cache /reports /app
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-m", "monbot.bot"]

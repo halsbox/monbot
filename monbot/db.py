@@ -100,6 +100,19 @@ CREATE_MAINT_AUDIT_SQL = """
                              ); \
                          """
 
+CREATE_REPORTS_SQL = """
+CREATE TABLE IF NOT EXISTS reports (
+  dashboard_id INTEGER NOT NULL,
+  period_type  TEXT NOT NULL CHECK (period_type IN ('week','month')),
+  start_ts     INTEGER NOT NULL,
+  end_ts       INTEGER NOT NULL,
+  path         TEXT NOT NULL,
+  tg_file_id   TEXT,
+  PRIMARY KEY (dashboard_id, period_type, start_ts)
+);
+"""
+
+
 ROLE_LEVEL = {ROLE_VIEWER: 1, ROLE_MAINTAINER: 2, ROLE_ADMIN: 3}
 
 
@@ -148,9 +161,9 @@ class UserDB:
               FROM users_old;
             """)
           await db.execute("DROP TABLE users_old;")
-      # FIX: actually create invites and maintenance audit tables
       await db.execute(CREATE_INVITES_SQL)
       await db.execute(CREATE_MAINT_AUDIT_SQL)
+      await db.execute(CREATE_REPORTS_SQL)
       await db.execute("PRAGMA foreign_keys=on;")
       await db.commit()
 
@@ -328,3 +341,34 @@ class UserDB:
       async with db.execute("SELECT tz FROM users WHERE telegram_id = ?", (telegram_id,)) as cur:
         row = await cur.fetchone()
         return row[0] if row and row[0] else "Europe/Moscow"
+
+  async def get_report_record(self, dashboard_id: int, period_type: str, start_ts: int) -> Optional[tuple]:
+    """Return (path, tg_file_id, end_ts) or None."""
+    async with aiosqlite.connect(self.db_path) as db:
+      async with db.execute(
+          "SELECT path, tg_file_id, end_ts FROM reports WHERE dashboard_id=? AND period_type=? AND start_ts=?",
+          (dashboard_id, period_type, start_ts)
+      ) as cur:
+        row = await cur.fetchone()
+        return row if row else None
+
+  async def upsert_report_path(self, dashboard_id: int, period_type: str, start_ts: int, end_ts: int, path: str):
+    async with aiosqlite.connect(self.db_path) as db:
+      await db.execute("""
+                       INSERT INTO reports (dashboard_id, period_type, start_ts, end_ts, path)
+                       VALUES (?, ?, ?, ?, ?) ON CONFLICT(dashboard_id, period_type, start_ts) DO
+                       UPDATE SET
+                           end_ts=excluded.end_ts, path =excluded.path
+                       """, (dashboard_id, period_type, start_ts, end_ts, path))
+      await db.commit()
+
+  async def set_report_file_id(self, dashboard_id: int, period_type: str, start_ts: int, file_id: str):
+    async with aiosqlite.connect(self.db_path) as db:
+      await db.execute("""
+                       UPDATE reports
+                       SET tg_file_id=?
+                       WHERE dashboard_id = ?
+                         AND period_type = ?
+                         AND start_ts = ?
+                       """, (file_id, dashboard_id, period_type, start_ts))
+      await db.commit()
