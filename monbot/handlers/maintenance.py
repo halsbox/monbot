@@ -389,9 +389,10 @@ async def open_graph_from_maint(update: Update, context: CallbackContext):
   period = context.user_data.get(CTX_GRAPH_PERIOD) or DEFAULT_GRAPH_ITEM_PERIOD
 
   gsvc: GraphService = context.application.bot_data[CTX_GRAPH_SVC]
+  tz = await get_tz(update, context)
   key_parts, ttl, cache_res = await gsvc.get_item_media_from_item(
     hostid=info.hostid, itemid=info.itemid, name=info.name, color=info.color, units=info.units,
-    period_label=period, width=IMG_WIDTH, height=IMG_HEIGHT
+    period_label=period, width=IMG_WIDTH, height=IMG_HEIGHT, tz=tz
   )
   markup = build_time_keyboard_item(info.itemid, host_name)
   new_msg_id, new_file_id = await edit_or_send_graph(

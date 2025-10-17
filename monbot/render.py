@@ -3,8 +3,9 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import math
-import time
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import numpy.typing as npt
@@ -318,7 +319,7 @@ class SkiaRenderer:
         return s
     return candidates[-1]
 
-  def _draw_x_ticks_and_labels(self, canvas: skia.Canvas, rect: skia.Rect, t_from: int, t_to: int, font: skia.Font):
+  def _draw_x_ticks_and_labels(self, canvas: skia.Canvas, rect: skia.Rect, t_from: int, t_to: int, font: skia.Font, tz: ZoneInfo):
     step = self._time_step(t_from, t_to, self.theme.x_ticks_target)
     if step <= 0:
       return
@@ -342,10 +343,7 @@ class SkiaRenderer:
 
     # label format by span
     span = t_to - t_from
-    if span <= 3 * 86400:
-      fmt = "%H:%M"
-    else:
-      fmt = "%d.%m"
+    fmt = "%H:%M" if span <= 3 * 86400 else "%d.%m"
 
     xw = rect.width()
     tspan = max(t_to - t_from, 1)
@@ -357,7 +355,7 @@ class SkiaRenderer:
       y2 = y1 + self.theme.tick_length
       canvas.drawLine(px, y1, px, y2, tick_paint)
 
-      label = time.strftime(fmt, time.localtime(tx))
+      label = datetime.fromtimestamp(tx, tz).strftime(fmt)
       w = font.measureText(label)
 
       if (i == len(ticks) - 1) and ((px - w / 2.0) > (rect.right() - w)):
@@ -492,6 +490,7 @@ class SkiaRenderer:
       width: int,
       height: int,
       trigger_lines: Optional[List[Tuple[float, int]]] = None,
+      tz: ZoneInfo = ZoneInfo("UTC")
   ) -> Tuple[skia.Image, GraphTemplate, float, float, List[Tuple[str, str, int, int, int, str, str]]]:
     # Filter items with non-empty units; if none remain, keep all to avoid empty plot
     filtered = [t for t in series_list if t[6]]
@@ -532,7 +531,7 @@ class SkiaRenderer:
     # Y grid + labels
     self._draw_y_ticks_and_labels_precomputed(canvas, tmpl.layout.plot_rect, axis_min, axis_max, y_ticks, tmpl.font)
     # X ticks + labels
-    self._draw_x_ticks_and_labels(canvas, tmpl.layout.plot_rect, t_from, t_to, tmpl.font)
+    self._draw_x_ticks_and_labels(canvas, tmpl.layout.plot_rect, t_from, t_to, tmpl.font, tz)
 
     # Trigger lines under series
     if trigger_lines:
@@ -654,9 +653,10 @@ class SkiaRenderer:
       height: int,
       quality: int = 82,
       trigger_lines: Optional[List[Tuple[float, int]]] = None,
+      tz: ZoneInfo = ZoneInfo("UTC"),
   ) -> bytes:
     image, _tmpl, _amin, _amax, _ordered = self._render_image_core(
-      sig_graphid, series_list, envelopes, t_from, t_to, width, height, trigger_lines
+      sig_graphid, series_list, envelopes, t_from, t_to, width, height, trigger_lines, tz
     )
     data = image.encodeToData(skia.kJPEG, quality)
     return bytes(data) if data is not None else b""
@@ -671,9 +671,10 @@ class SkiaRenderer:
       width: int,
       height: int,
       trigger_lines: Optional[List[Tuple[float, int]]] = None,
+      tz: ZoneInfo = ZoneInfo("UTC"),
   ) -> bytes:
     image, _tmpl, _amin, _amax, _ordered = self._render_image_core(
-      sig_graphid, series_list, envelopes, t_from, t_to, width, height, trigger_lines
+      sig_graphid, series_list, envelopes, t_from, t_to, width, height, trigger_lines, tz
     )
     data = image.encodeToData(skia.kPNG, 100)
     return bytes(data) if data is not None else b""

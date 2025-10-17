@@ -9,7 +9,7 @@ from monbot.cache2 import ImageCache2
 from monbot.config import IMG_HEIGHT, IMG_WIDTH
 from monbot.db import UserDB
 from monbot.graph_service import GraphService
-from monbot.handlers.common import check_user, clean_all_messages, get_host_data, is_allowed_user
+from monbot.handlers.common import check_user, clean_all_messages, get_host_data, get_tz, is_allowed_user
 from monbot.handlers.consts import *
 from monbot.handlers.keyboards import build_graphs_keyboard, build_hosts_keyboard, build_time_keyboard_item
 from monbot.handlers.maintenance import CTX_MAINT_ITEM_KEY, build_maint_view_for_item
@@ -32,8 +32,9 @@ async def host_handler(update: Update, context: CallbackContext):
   items = context.application.bot_data[CTX_ITEMS].items_by_hostid(hostid)
   names = [(it.itemid, it.name) for it in items]
   graph_svc: GraphService = context.application.bot_data[CTX_GRAPH_SVC]
+  tz = await get_tz(update, context)
   key_parts, ttl, cache_res = await graph_svc.get_overview_media_from_items(
-    hostid, items, GRAPH_OVERVIEW_PERIOD, IMG_WIDTH, IMG_HEIGHT
+    hostid, items, GRAPH_OVERVIEW_PERIOD, IMG_WIDTH, IMG_HEIGHT, tz=tz
   )
   markup = build_graphs_keyboard(names)
   chat_id = update.effective_chat.id
@@ -78,9 +79,10 @@ async def item_handler(update: Update, context: CallbackContext):
   host_name = items_idx.host_name_by_hostid(info.hostid) or ""
 
   gsvc: GraphService = context.application.bot_data[CTX_GRAPH_SVC]
+  tz = await get_tz(update, context)
   key_parts, ttl, cache_res = await gsvc.get_item_media_from_item(
     hostid=info.hostid, itemid=info.itemid, name=info.name, color=info.color, units=info.units,
-    period_label=period, width=IMG_WIDTH, height=IMG_HEIGHT
+    period_label=period, width=IMG_WIDTH, height=IMG_HEIGHT, tz=tz
   )
 
   chat_id = update.effective_chat.id
@@ -115,11 +117,11 @@ async def item_handler(update: Update, context: CallbackContext):
     if i - 1 >= 0:
       asyncio.create_task(
         gsvc.get_item_media_from_item(info.hostid, info.itemid, info.name, info.color, info.units, TIME_RANGES[i - 1],
-                                      IMG_WIDTH, IMG_HEIGHT))
+                                      IMG_WIDTH, IMG_HEIGHT, tz=tz))
     if i + 1 < len(TIME_RANGES):
       asyncio.create_task(
         gsvc.get_item_media_from_item(info.hostid, info.itemid, info.name, info.color, info.units, TIME_RANGES[i + 1],
-                                      IMG_WIDTH, IMG_HEIGHT))
+                                      IMG_WIDTH, IMG_HEIGHT, tz=tz))
 
   return SELECTING
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import replace
 from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from monbot.items_index import ItemInfo
 from monbot.cache2 import CacheResult, ImageCache2
@@ -96,7 +97,7 @@ class GraphService:
 
   async def get_item_media_from_item(
       self, hostid: str, itemid: str, name: str, color: str, units: str,
-      period_label: str, width: int, height: int
+      period_label: str, width: int, height: int, tz: ZoneInfo = ZoneInfo("UTC"),
   ) -> Tuple[Dict[str, Any], int, CacheResult]:
     t_from, t_to, step = align_window(period_label)
     ttl = step
@@ -124,7 +125,8 @@ class GraphService:
       "period": period_label,
       "to": t_to,
       "size": f"{width}x{height}",
-      "rv": "r7",
+      "tz": str(tz),
+      "rv": "r9",
     }
 
     def producer() -> bytes:
@@ -139,6 +141,7 @@ class GraphService:
         width=width,
         height=height,
         trigger_lines=trig_lines,
+        tz=tz,
       )
 
     result = await self.cache.get_or_produce(key_parts, ttl, producer)
@@ -151,6 +154,7 @@ class GraphService:
       period_label: str,
       width: int,
       height: int,
+      tz: ZoneInfo = ZoneInfo("UTC"),
   ) -> Tuple[Dict[str, Any], int, CacheResult]:
     t_from, t_to, step = align_window(period_label)
     ttl = step
@@ -187,7 +191,8 @@ class GraphService:
       "period": period_label,
       "to": t_to,
       "size": f"{width}x{height}",
-      "rv": "r3",  # bump renderer version due to trigger lines
+      "tz": str(tz),
+      "rv": "r9",  # bump renderer version due to trigger lines
       "thr": thr_hash,  # triggers affect image
     }
 
@@ -203,21 +208,22 @@ class GraphService:
         width=width,
         height=height,
         trigger_lines=trig_lines_render,
+        tz=tz,
       )
       return image
 
     result = await self.cache.get_or_produce(key_parts, ttl, producer)
     return key_parts, ttl, result
 
-  async def prefetch(self, graphid: str, period_label: str, width: int, height: int):
+  async def prefetch(self, graphid: str, period_label: str, width: int, height: int, tz: ZoneInfo = ZoneInfo("UTC")):
     try:
-      await self.get_media(graphid, period_label, width, height)
+      await self.get_media(graphid, period_label, width, height, tz)
     except Exception:
       # Silent prefetch failure; avoid spamming logs in handler path
       pass
 
   async def get_overview_media_from_items(
-      self, hostid: str, items: List[ItemInfo], period_label: str, width: int, height: int
+      self, hostid: str, items: List[ItemInfo], period_label: str, width: int, height: int, tz: ZoneInfo = ZoneInfo("UTC"),
   ) -> tuple[dict[str, str | int], int, CacheResult]:
     t_from, t_to, step = align_window(period_label)
     ttl = step
@@ -227,15 +233,21 @@ class GraphService:
     sig_items_key = [(it.itemid, it.color, it.calc_fnc, it.drawtype, it.sortorder) for it in graph_sig_items]
     shash = self._sig_hash(graph_sig.graphid, sig_items_key)
     key_parts = {
-      "k": "overview_items", "hostid": hostid, "sig": shash, "period": period_label, "to": t_to,
-      "size": f"{width}x{height}", "rv": "r6",
+      "k": "overview",
+      "hostid": hostid,
+      "sig": shash,
+      "period": period_label,
+      "to": t_to,
+      "size": f"{width}x{height}",
+      "tz": str(tz),
+      "rv": "r9",
     }
 
     def producer() -> bytes:
       series = self.zbx.fetch_series(graph_sig, t_from, t_to)
       envs = downsample_for_width(graph_sig, series, t_from, t_to, width)
       return self.renderer.render_png(sig_graphid=graph_sig.graphid, series_list=sig_items, envelopes=envs,
-                                      t_from=t_from, t_to=t_to, width=width, height=height, trigger_lines=None)
+                                      t_from=t_from, t_to=t_to, width=width, height=height, trigger_lines=None, tz=tz)
 
     result = await self.cache.get_or_produce(key_parts, ttl, producer)
     return key_parts, ttl, result
