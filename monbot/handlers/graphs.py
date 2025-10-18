@@ -12,7 +12,7 @@ from monbot.graph_service import GraphService
 from monbot.handlers.common import check_user, clean_all_messages, get_host_data, get_tz, is_allowed_user
 from monbot.handlers.consts import *
 from monbot.handlers.keyboards import build_graphs_keyboard, build_hosts_keyboard, build_time_keyboard_item
-from monbot.handlers.maintenance import CTX_MAINT_ITEM_KEY, build_maint_view_for_item
+from monbot.handlers.maintenance import build_maint_view_for_item
 from monbot.handlers.texts import *
 from monbot.items_index import ItemsIndex
 from monbot.tg_media import edit_or_send_graph
@@ -102,7 +102,6 @@ async def item_handler(update: Update, context: CallbackContext):
   context.user_data[CTX_GRAPH_MSG_ID] = new_msg_id
   context.user_data[CTX_GRAPH_PERIOD] = period
   context.user_data[CTX_GRAPH_ITEMID] = info.itemid
-  context.user_data[CTX_GRAPH_ITEM_NAME] = info.name
 
   if new_file_id and not cache_res.file_id:
     cache2: ImageCache2 = context.application.bot_data[CTX_CACHE2]

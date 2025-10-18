@@ -182,16 +182,37 @@ async def maint_action(update: Update, context: CallbackContext):
     logger.debug("maint_action: FAST")
     now = int(time.time())
     res = msvc.add_period(itemid, now, now + 86400, mtype=0)
-    await db.audit_maint(update.effective_user.id, "create", res["maintenanceid"], itemid, res.get("hostid", ""),
-                         res["before"], res["after"])
+    items_idx: ItemsIndex = context.application.bot_data[CTX_ITEMS]
+    info = items_idx.get_item(itemid)
+    host_name = items_idx.host_name_by_hostid(res.get("hostid", "")) or (
+      items_idx.host_name_by_hostid(info.hostid) if info else "")
+    await db.audit_maint(
+      update.effective_user.id, "create", res["maintenanceid"], itemid, res.get("hostid", ""),
+      res["before"], res["after"],
+      username=update.effective_user.username,
+      host_name=host_name,
+      item_name=(info.name if info else ""),
+      start_ts=res.get("start_ts"),
+      end_ts=res.get("end_ts"),
+    )
     return await maint_select_item(update, context)
 
   if data.startswith(CB_MAINT_END):
-    logger.debug("maint_action: END")
     res = msvc.end_now(itemid)
     if res:
-      await db.audit_maint(update.effective_user.id, "end", res["maintenanceid"], itemid, res.get("hostid", ""),
-                           res["before"], res["after"])
+      items_idx: ItemsIndex = context.application.bot_data[CTX_ITEMS]
+      info = items_idx.get_item(itemid)
+      host_name = items_idx.host_name_by_hostid(res.get("hostid", "")) or (
+        items_idx.host_name_by_hostid(info.hostid) if info else "")
+      await db.audit_maint(
+        update.effective_user.id, "end", res["maintenanceid"], itemid, res.get("hostid", ""),
+        res["before"], res["after"],
+        username=update.effective_user.username,
+        host_name=host_name,
+        item_name=(info.name if info else ""),
+        start_ts=res.get("start_ts"),
+        end_ts=res.get("end_ts"),
+      )
     return await maint_select_item(update, context)
 
   if data.startswith(CB_MAINT_ADD):
@@ -262,12 +283,34 @@ async def maint_action(update: Update, context: CallbackContext):
       delta = (end_ts - active[1]) if active else 0
       if delta > 0:
         res = msvc.extend_active(itemid, delta)
-        await db.audit_maint(update.effective_user.id, "update", res["maintenanceid"], itemid, res.get("hostid", ""),
-                             res["before"], res["after"])
+        items_idx: ItemsIndex = context.application.bot_data[CTX_ITEMS]
+        info = items_idx.get_item(itemid)
+        host_name = items_idx.host_name_by_hostid(res.get("hostid", "")) or (
+          items_idx.host_name_by_hostid(info.hostid) if info else "")
+        await db.audit_maint(
+          update.effective_user.id, "update", res["maintenanceid"], itemid, res.get("hostid", ""),
+          res["before"], res["after"],
+          username=update.effective_user.username,
+          host_name=host_name,
+          item_name=(info.name if info else ""),
+          start_ts=res.get("start_ts"),
+          end_ts=res.get("end_ts"),
+        )
     else:
       res = msvc.add_period(itemid, start_ts, end_ts, mtype=0)
-      await db.audit_maint(update.effective_user.id, "create", res["maintenanceid"], itemid, res.get("hostid", ""),
-                           res["before"], res["after"])
+      items_idx: ItemsIndex = context.application.bot_data[CTX_ITEMS]
+      info = items_idx.get_item(itemid)
+      host_name = items_idx.host_name_by_hostid(res.get("hostid", "")) or (
+        items_idx.host_name_by_hostid(info.hostid) if info else "")
+      await db.audit_maint(
+        update.effective_user.id, "create", res["maintenanceid"], itemid, res.get("hostid", ""),
+        res["before"], res["after"],
+        username=update.effective_user.username,
+        host_name=host_name,
+        item_name=(info.name if info else ""),
+        start_ts=res.get("start_ts"),
+        end_ts=res.get("end_ts"),
+      )
 
     clean_flow_and_pending(context)
     return await maint_select_item(update, context)

@@ -6,16 +6,18 @@ from telegram import InlineKeyboardMarkup, InputMediaPhoto
 from telegram.error import BadRequest
 from telegram.ext import ExtBot
 
+FALLBACK_EDIT_ERRORS = (
+  "message to edit not found",
+  "message cannot be edited",
+  "message can't be edited",
+  "message is not a media message",
+  "message content type cannot be edited",
+)
+
 
 def _should_fallback_send(s: str) -> bool:
   s = s.lower()
-  return (
-      "message to edit not found" in s
-      or "message cannot be edited" in s
-      or "message can't be edited" in s
-      or "message is not a media message" in s
-      or "message content type cannot be edited" in s
-  )
+  return any(substr in s for substr in FALLBACK_EDIT_ERRORS)
 
 
 async def edit_or_send_graph(

@@ -108,10 +108,10 @@ HELP_ADMIN = (
   "/adduser <telegram_id> [role] — добавить/обновить пользователя\n"
   "/setrole <telegram_id> <role> — изменить роль\n"
   "/deluser <telegram_id> — удалить пользователя\n"
-  "/refresh — обновить кэш\n\n"
+  "/refresh — обновить кэш\n"
+  "/audit [фильтр] — последние записи аудита\n\n"
   "Доступные роли: {roles}".format(roles=", ".join(VALID_ROLES))
 )
-
 START_INVITE_REQUIRED = "Требуется приглашение. Используйте /start <otp> из ссылки приглашения."
 START_INVITE_INVALID = "Неверный или просроченный код приглашения."
 START_INVITE_OK_FMT = "Добро пожаловать. Ваша роль: {role}. Используйте /help."
@@ -151,3 +151,22 @@ BTN_REPORT_CANCEL = "❌ Отмена"
 REPORT_LIST_TITLE = "Выберите отчёт:"
 REPORT_LIST_WEEKS_CAP = "Недели:"
 REPORT_LIST_MONTHS_CAP = "Месяцы:"
+
+AUDIT_EMPTY = "Нет записей аудита."
+AUDIT_USAGE = "Использование: /audit [фильтр_по_хосту_или_датчику]"
+
+# action verbs (display)
+AUDIT_VERBS = {
+  "create": "добавил(а)",
+  "update": "обновил(а)",
+  "delete": "удалил(а)",
+  "end": "завершил(а)",
+}
+
+AUDIT_LINE_DT_FMT = "%d.%m %H:%M"
+
+AUDIT_LINE_FMT = (
+  "⏱ {dt} *{item}*\n"
+  "@{user} {verb}:\n"
+  "{period}"
+)

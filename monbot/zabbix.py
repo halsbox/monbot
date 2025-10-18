@@ -6,7 +6,7 @@ import requests
 import urllib3
 from urllib3.exceptions import InsecureRequestWarning
 
-from monbot.config import SUPPRESS_TLS_WARN, ZABBIX_TOKEN_MODE, ZABBIX_VERIFY_SSL
+from monbot.config import SUPPRESS_TLS_WARN, ZABBIX_HTTP_TIMEOUT, ZABBIX_TOKEN_MODE, ZABBIX_VERIFY_SSL
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +23,15 @@ class ZabbixWeb:
     self.session = requests.Session()
     self.session.verify = verify
     self.session.proxies.update(self.proxies)
-
+    self.timeout = ZABBIX_HTTP_TIMEOUT
     if not self.verify and SUPPRESS_TLS_WARN:
       urllib3.disable_warnings(category=InsecureRequestWarning)
 
   def login(self):
     data = {"name": self.username, "password": self.password, "enter": "Sign in"}
-    r = self.session.post(self.server, data=data, allow_redirects=True)
+    r = self.session.post(self.server, data=data, allow_redirects=True, timeout=self.timeout)
     if not r.cookies:
-      logger.error("Zabbix login failed: no cookies received, status=%s body=%s", r.status_code, r.text[:500])
+      logger.error("Zabbix login failed: status=%s", r.status_code)
       raise RuntimeError("Zabbix login failed")
 
   def api_request(self, method: str, params: dict) -> Any:
@@ -40,8 +40,7 @@ class ZabbixWeb:
     payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
 
     def do_request(headers: dict, body: dict) -> requests.Response:
-      # Using data=json.dumps(...) to keep Content-Type as 'application/json-rpc'
-      return self.session.post(url, data=json.dumps(body), headers=headers)
+      return self.session.post(url, data=json.dumps(body), headers=headers, timeout=self.timeout)
 
     tried = []
 
@@ -64,11 +63,11 @@ class ZabbixWeb:
       tried.append(mode)
       try:
         r = do_request(headers, body)
-        # If proxy/WAF rejects Authorization header, can return 412/401/403 etc.
         if r.status_code >= 400:
-          # Log detail and fall back if in auto mode
-          logger.warning("Zabbix API HTTP %s on mode=%s, body: %s", r.status_code, mode, r.text[:800])
-          # Fallback only in 'auto' when first mode fails
+          body_preview = (r.text or "")[:200]
+          if r.status_code in (401, 403):
+            body_preview = "<suppressed>"
+          logger.warning("Zabbix API HTTP %s mode=%s; body=%s", r.status_code, mode, body_preview)
           if ZABBIX_TOKEN_MODE == "auto" and mode == "header":
             continue
           r.raise_for_status()
@@ -80,11 +79,14 @@ class ZabbixWeb:
       except requests.HTTPError as e:
         last_exc = e
         if ZABBIX_TOKEN_MODE == "auto" and mode == "header":
-          # try next mode
+          continue
+        raise
+      except requests.Timeout as e:
+        last_exc = e
+        if ZABBIX_TOKEN_MODE == "auto" and mode == "header":
           continue
         raise
       except ValueError as e:
-        # JSON decode error, try next mode if auto
         last_exc = e
         if ZABBIX_TOKEN_MODE == "auto" and mode == "header":
           continue

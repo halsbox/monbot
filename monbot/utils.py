@@ -2,8 +2,6 @@ import math
 import re
 import time
 
-from telegram import Update
-from telegram.ext import CallbackContext
 
 PALETTE_20 = [
   "1f77b4", "ff7f0e", "2ca02c", "d62728", "9467bd",
@@ -11,15 +9,6 @@ PALETTE_20 = [
   "393b79", "637939", "8c6d31", "843c39", "7b4173",
   "3182bd", "e6550d", "31a354", "dd1c77", "e377c2",
 ]
-
-
-async def safe_delete_query_message(update: Update, context: CallbackContext):
-  q = update.callback_query
-  if q and q.message:
-    try:
-      await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=q.message.message_id)
-    except Exception:
-      pass
 
 
 def natural_key(s: str):

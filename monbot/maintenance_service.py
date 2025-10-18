@@ -5,6 +5,7 @@ import logging
 import time
 from typing import Any, List, Optional, Set, Tuple
 
+from monbot.config import MAINT_DEFAULT_PAST_START_SEC, MAINT_MIN_PERIOD_SEC
 from monbot.zabbix import ZabbixWeb
 
 MAX_TS_2038 = 2_147_483_647
@@ -49,8 +50,8 @@ class MaintenanceService:
     existing = self.find_container(hostid, name)
     if existing:
       return existing
-    past_start = 86400  # Unix Epoch start (0 is "never" in zabbix)
-    past_period = 300  # zabbix minimal allowed period is 300s
+    past_start = MAINT_DEFAULT_PAST_START_SEC
+    past_period = MAINT_MIN_PERIOD_SEC
     params = {
       "name": name,
       "maintenance_type": 0,  # with data collection
@@ -69,8 +70,7 @@ class MaintenanceService:
         "value": name,
       }],
     }
-    res = self._api("maintenance.create", params)
-    # Reload container
+    self._api("maintenance.create", params)
     return self.find_container(hostid, name) or {}
 
   def list_periods(self, itemid: str) -> Tuple[dict, List[Tuple[int, int]]]:
@@ -90,10 +90,10 @@ class MaintenanceService:
   def add_period(self, itemid: str, start_ts: int, end_ts: int, mtype: int = 0) -> dict:
     if end_ts <= start_ts:
       raise ValueError("end must be after start")
-    c = self.ensure_container(itemid)
-    logger.info("Maintenance add_period: %s", c)
-    mid = c["maintenanceid"]
-    tps = c.get("timeperiods") or []
+    maint = self.ensure_container(itemid)
+    logger.info("Maintenance add_period: %s", maint)
+    mid = maint["maintenanceid"]
+    tps = maint.get("timeperiods") or []
     # append new one-time period
     tps.append({
       "timeperiod_type": 0,
@@ -104,51 +104,61 @@ class MaintenanceService:
       "maintenanceid": mid,
       "timeperiods": tps,
     }
-    before = json.dumps({"timeperiods": c.get("timeperiods")}, separators=(",", ":"))
-    logger.info("Maintenance update: %s", params)
-    res = self._api("maintenance.update", params)
-    logger.info("Maintenance update result: %s", res)
+    before = json.dumps({"timeperiods": maint.get("timeperiods")}, separators=(",", ":"))
+    res = self._api("maintenance.update", {"maintenanceid": mid, "timeperiods": tps})
     after = json.dumps({"timeperiods": tps}, separators=(",", ":"))
-    return {"update": res, "before": before, "after": after, "maintenanceid": mid,
-            "hostid": (c.get("hosts") or [{}])[0].get("hostid", "")}
+    return {
+      "update": res,
+      "before": before,
+      "after": after,
+      "maintenanceid": mid,
+      "hostid": (maint.get("hosts") or [{}])[0].get("hostid", ""),
+      "start_ts": start_ts,
+      "end_ts": end_ts,
+    }
 
   def end_now(self, itemid: str, now_ts: Optional[int] = None) -> dict | None:
     now = int(time.time()) if now_ts is None else int(now_ts)
-    c = self.ensure_container(itemid)
-    mid = c["maintenanceid"]
-    tps = c.get("timeperiods") or []
+    maint = self.ensure_container(itemid)
+    mid = maint["maintenanceid"]
+    tps = maint.get("timeperiods") or []
     changed = False
     new_tps: List[dict] = []
+    affected_start = None
+    affected_old_end = None
     for tp in tps:
       start = int(tp.get("start_date", 0))
       per = int(tp.get("period", 0))
-      if start <= now <= start + per:
+      end = start + per
+      if start <= now <= end:
+        affected_start = start
+        affected_old_end = end
         newdur = max(0, now - start)
-        if newdur >= 300:
+        if newdur >= MAINT_MIN_PERIOD_SEC:
           logger.info("Maintenance end_now, time lasted more then 5 min, updating: %s", tp)
           new_tps.append({"timeperiod_type": 0, "start_date": start, "period": newdur})
+          changed = True
         else:
           logger.info("Maintenance end_now, time lasted less then 5 min, skipping period: %s", tp)
-        changed = True
+          changed = True # still need to update to remove old periods
       else:
         new_tps.append(tp)
     if not changed:
       logger.info("Periods not changed, skipping update")
       return None
-    params = {"maintenanceid": mid, "timeperiods": new_tps}
-    logger.info("Maintenance update: %s", params)
     before = json.dumps({"timeperiods": tps}, separators=(",", ":"))
-    res = self._api("maintenance.update", params)
-    logger.info("Maintenance update result: %s", res)
+    res = self._api("maintenance.update", {"maintenanceid": mid, "timeperiods": new_tps})
     after = json.dumps({"timeperiods": new_tps}, separators=(",", ":"))
-    return {"update": res, "before": before, "after": after, "maintenanceid": mid,
-            "hostid": (c.get("hosts") or [{}])[0].get("hostid", "")}
-
-  def delete_container(self, itemid: str) -> dict:
-    c = self.ensure_container(itemid)
-    mid = c["maintenanceid"]
-    res = self._api("maintenance.delete", [mid])
-    return {"delete": res, "maintenanceid": mid, "hostid": (c.get("hosts") or [{}])[0].get("hostid", "")}
+    return {
+      "update": res,
+      "before": before,
+      "after": after,
+      "maintenanceid": mid,
+      "hostid": (maint.get("hosts") or [{}])[0].get("hostid", ""),
+      "start_ts": affected_start,
+      "end_ts": now,
+      "old_end_ts": affected_old_end,
+    }
 
   def active_items_for_host(self, hostid: str) -> Set[str]:
     """Return itemids that currently have an active period on this host (now inside any timeperiod),
@@ -161,7 +171,7 @@ class MaintenanceService:
       "selectHosts": ["hostid"],
       "hostids": [hostid],
       "filter": {"status": 0},
-      "tags": [{"tag": self.tag_key, "operator": 1}],  # exists
+      "tags": [{"tag": self.tag_key, "operator": 4}], # 4 = exists
     })
     active: Set[str] = set()
     for m in res or []:
@@ -183,46 +193,36 @@ class MaintenanceService:
 
   def extend_active(self, itemid: str, delta_sec: int) -> dict:
     now = int(time.time())
-    c = self.ensure_container(itemid)
-    mid = c["maintenanceid"]
-    tps = c.get("timeperiods") or []
+    maint = self.ensure_container(itemid)
+    mid = maint["maintenanceid"]
+    tps = maint.get("timeperiods") or []
     new_tps: List[dict] = []
     changed = False
+    affected_start = None
+    old_end = None
+    new_end = None
     for tp in tps:
       start = int(tp.get("start_date", 0))
       per = int(tp.get("period", 0))
       end = start + per
       if start <= now <= end:
+        affected_start = start
+        old_end = end
         per = per + max(1, delta_sec)
+        new_end = start + per
         changed = True
       new_tps.append({"timeperiod_type": 0, "start_date": start, "period": per})
-    if not changed:
-      return {"update": {}, "before": json.dumps({"timeperiods": tps}, separators=(",", ":")),
-              "after": json.dumps({"timeperiods": new_tps}, separators=(",", ":")), "maintenanceid": mid,
-              "hostid": (c.get("hosts") or [{}])[0].get("hostid", "")}
     before = json.dumps({"timeperiods": tps}, separators=(",", ":"))
     res = self._api("maintenance.update", {"maintenanceid": mid, "timeperiods": new_tps})
     after = json.dumps({"timeperiods": new_tps}, separators=(",", ":"))
-    return {"update": res, "before": before, "after": after, "maintenanceid": mid,
-            "hostid": (c.get("hosts") or [{}])[0].get("hostid", "")}
-
-  def delete_active(self, itemid: str) -> dict:
-    now = int(time.time())
-    c = self.ensure_container(itemid)
-    mid = c["maintenanceid"]
-    tps = c.get("timeperiods") or []
-    kept: List[dict] = []
-    removed = False
-    for tp in tps:
-      start = int(tp.get("start_date", 0))
-      per = int(tp.get("period", 0))
-      end = start + per
-      if start <= now <= end:
-        removed = True
-        continue
-      kept.append({"timeperiod_type": 0, "start_date": start, "period": per})
-    before = json.dumps({"timeperiods": tps}, separators=(",", ":"))
-    res = self._api("maintenance.update", {"maintenanceid": mid, "timeperiods": kept})
-    after = json.dumps({"timeperiods": kept}, separators=(",", ":"))
-    return {"update": res, "before": before, "after": after, "maintenanceid": mid,
-            "hostid": (c.get("hosts") or [{}])[0].get("hostid", "")}
+    return {
+      "update": res,
+      "before": before,
+      "after": after,
+      "maintenanceid": mid,
+      "hostid": (maint.get("hosts") or [{}])[0].get("hostid", ""),
+      "start_ts": affected_start,
+      "end_ts": new_end,
+      "old_end_ts": old_end,
+      "delta": max(1, delta_sec),
+    }

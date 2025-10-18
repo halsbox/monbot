@@ -228,7 +228,6 @@ class ReportService:
       "profileIdx": "web.dashboard.filter",
       "widget_view": 1,  # match dashboard appearance
     }
-    print(params)
     r = self.zbx.session.get(url, params=params, timeout=30)
     r.raise_for_status()
     ctype = (r.headers.get("content-type") or "").lower()

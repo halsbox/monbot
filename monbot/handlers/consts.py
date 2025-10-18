@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Dict
 
 from monbot.config import TIME_RANGES
 
@@ -57,7 +56,6 @@ CB_MAINT_ACTION_KEYS = (
 
 # Context keys (graph)
 CTX_GRAPH_MSG_ID = "graph_msg_id"
-CTX_GRAPH_GRAPHID = "graph_graphid"
 CTX_GRAPH_PERIOD = "graph_period"
 CTX_GRAPH_ITEMID = "graph_itemid"
 CTX_GRAPH_ITEM_NAME = "graph_item_name"
@@ -108,9 +106,3 @@ PAT_GRAPH_HOST = rf"^{CB_GRAPH_HOST}:"
 PAT_MAINT_HOST = rf"^{CB_MAINT_HOST}:"
 PAT_MAINT_ITEM_OR_BACK_HOST = rf"^(?:{CB_MAINT_ITEM}:\d+|{CB_MAINT_BACK_HOST})$"
 PAT_MAINT_ACTIONS = rf"^(?:{CB_MAINT_FAST}:\d+|{CB_MAINT_END}:\d+|{CB_MAINT_NEW}:\d+|{CB_MAINT_ADD}:\d+|{CB_MAINT_CONFIRM}:\d+|{CB_MAINT_RETRY}|{CB_MAINT_CANCEL}|{CB_MAINT_BACK_HOST}|{CB_MAINT_BACK_ITEMS})$"
-
-
-# Host name pattern must be built from ALLOW_HOSTS at runtime in bot.py
-def host_names_pattern(allow_hosts: Dict[str, str]) -> str:
-  # returns pattern string for CallbackQueryHandler(pattern=..)
-  return f"^{CB_GRAPH_HOST}:(" + "|".join(re.escape(v) for v in allow_hosts.values()) + ")$"

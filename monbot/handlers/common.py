@@ -89,7 +89,6 @@ def escape_markdown_v2(text: str) -> str:
     rest
   )
   escaped.append(rest_escaped)
-
   return ''.join(escaped)
 
 

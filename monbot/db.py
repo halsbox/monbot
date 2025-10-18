@@ -64,41 +64,24 @@ CREATE_INVITES_SQL = """
                      """
 
 CREATE_MAINT_AUDIT_SQL = """
-                         CREATE TABLE IF NOT EXISTS maint_audit
-                         (
-                             id
-                             INTEGER
-                             PRIMARY
-                             KEY
-                             AUTOINCREMENT,
-                             ts
-                             DATETIME
-                             DEFAULT
-                             CURRENT_TIMESTAMP,
-                             user_id
-                             INTEGER
-                             NOT
-                             NULL,
-                             action
-                             TEXT
-                             NOT
-                             NULL
-                             CHECK (
-                             action
-                             IN
-                         (
-                             'create',
-                             'update',
-                             'delete',
-                             'end'
-                         )),
-                             maintenanceid TEXT,
-                             itemid TEXT,
-                             hostid TEXT,
-                             before_json TEXT,
-                             after_json TEXT
-                             ); \
-                         """
+CREATE TABLE IF NOT EXISTS maint_audit
+(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts DATETIME DEFAULT CURRENT_TIMESTAMP,
+  user_id INTEGER NOT NULL,
+  username TEXT,
+  action TEXT NOT NULL CHECK (action IN ('create','update','delete','end')),
+  maintenanceid TEXT,
+  itemid TEXT,
+  item_name TEXT,
+  hostid TEXT,
+  host_name TEXT,
+  start_ts INTEGER,
+  end_ts INTEGER,
+  before_json TEXT,
+  after_json TEXT
+);
+"""
 
 CREATE_REPORTS_SQL = """
 CREATE TABLE IF NOT EXISTS reports (
@@ -111,7 +94,6 @@ CREATE TABLE IF NOT EXISTS reports (
   PRIMARY KEY (dashboard_id, period_type, start_ts)
 );
 """
-
 
 ROLE_LEVEL = {ROLE_VIEWER: 1, ROLE_MAINTAINER: 2, ROLE_ADMIN: 3}
 
@@ -161,8 +143,29 @@ class UserDB:
               FROM users_old;
             """)
           await db.execute("DROP TABLE users_old;")
+
       await db.execute(CREATE_INVITES_SQL)
       await db.execute(CREATE_MAINT_AUDIT_SQL)
+
+      cols = set()
+      async with db.execute("PRAGMA table_info(maint_audit)") as cur:
+        async for row in cur:
+          cols.add(row[1])
+      alter = []
+      for name, ddl in (
+          ("username", "TEXT"),
+          ("item_name", "TEXT"),
+          ("host_name", "TEXT"),
+          ("start_ts", "INTEGER"),
+          ("end_ts", "INTEGER"),
+      ):
+        if name not in cols:
+          alter.append(f"ALTER TABLE maint_audit ADD COLUMN {name} {ddl}")
+          if "username" == name:
+            alter.append("UPDATE maint_audit SET username = (SELECT username FROM users WHERE telegram_id = user_id)")
+      for stmt in alter:
+        await db.execute(stmt)
+
       await db.execute(CREATE_REPORTS_SQL)
       await db.execute("PRAGMA foreign_keys=on;")
       await db.commit()
@@ -178,15 +181,79 @@ class UserDB:
             """, (telegram_id, role, username, first_name, last_name))
       await db.commit()
 
-  async def audit_maint(self, user_id: int, action: str, maintenanceid: str | None, itemid: str | None,
-                        hostid: str | None, before_json: str | None, after_json: str | None):
+  async def audit_maint(
+      self,
+      user_id: int,
+      action: str,
+      maintenanceid: str | None,
+      itemid: str | None,
+      hostid: str | None,
+      before_json: str | None,
+      after_json: str | None,
+      username: str | None = None,
+      host_name: str | None = None,
+      item_name: str | None = None,
+      start_ts: int | None = None,
+      end_ts: int | None = None,
+  ):
     async with aiosqlite.connect(self.db_path) as db:
-      await db.execute("""
-                       INSERT INTO maint_audit (user_id, action, maintenanceid, itemid, hostid, before_json, after_json)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)
-                       """, (user_id, action, maintenanceid or "", itemid or "", hostid or "", before_json or "",
-                             after_json or ""))
+      await db.execute(
+        """
+        INSERT INTO maint_audit
+          (user_id, username, action, maintenanceid, itemid, item_name, hostid, host_name,
+           start_ts, end_ts, before_json, after_json)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+          user_id,
+          username or "",
+          action,
+          maintenanceid or "",
+          itemid or "",
+          item_name or "",
+          hostid or "",
+          host_name or "",
+          start_ts if start_ts is not None else None,
+          end_ts if end_ts is not None else None,
+          before_json or "",
+          after_json or "",
+        ),
+      )
       await db.commit()
+
+  async def list_maint_audit(self, limit: int = 10, filter_text: str | None = None) -> list[tuple]:
+    """
+    Returns rows: (ts, action, username, item_name, host_name, start_ts, end_ts)
+    optionally filtered by host_name LIKE ? OR item_name LIKE ?
+    """
+    async with aiosqlite.connect(self.db_path) as db:
+      if filter_text:
+        like = f"%{filter_text}%"
+        async with db.execute(
+          """
+          SELECT ts, action, COALESCE(username,''), COALESCE(item_name,''), COALESCE(host_name,''),
+                 start_ts, end_ts
+          FROM maint_audit
+          WHERE host_name LIKE ? OR item_name LIKE ?
+          ORDER BY id DESC
+          LIMIT ?
+          """,
+          (like, like, int(limit)),
+        ) as cur:
+          return await cur.fetchall()
+      else:
+        async with db.execute(
+          """
+          SELECT ts, action, COALESCE(username,''), COALESCE(item_name,''), COALESCE(host_name,''),
+                 start_ts, end_ts
+          FROM maint_audit
+          ORDER BY id DESC
+          LIMIT ?
+          """,
+          (int(limit),),
+        ) as cur:
+          return await cur.fetchall()
+
 
   async def create_invite(self, role: str, max_uses: int = 1, ttl_sec: Optional[int] = None) -> str:
     if role not in ROLE_LEVEL:

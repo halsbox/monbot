@@ -162,56 +162,64 @@ class ImageCache2:
 
     # Singleflight
     lock = self._locks.setdefault(key, asyncio.Lock())
-    async with lock:
-      # Re-check inside the lock to avoid thundering herd
-      l1_hit = self.l1.get(key)
-      if l1_hit is not None:
-        file_id, data, exp, _ = l1_hit
-        if _is_fresh(exp):
-          if file_id:
-            return CacheResult(file_id=file_id, data=None, path=None)
-          if data is not None:
-            return CacheResult(file_id=None, data=data, path=None)
-      if img_path.exists() and meta_path.exists():
-        try:
-          meta = json.loads(meta_path.read_text())
-          exp = float(meta.get("expiry_ts", 0.0))
-          file_id = meta.get("file_id")
+    try:
+      async with lock:
+        # Re-check inside the lock to avoid thundering herd
+        l1_hit = self.l1.get(key)
+        if l1_hit is not None:
+          file_id, data, exp, _ = l1_hit
           if _is_fresh(exp):
             if file_id:
-              self.l1.put(key, file_id, None, exp)
-              return CacheResult(file_id=file_id, data=None, path=img_path)
-            data = img_path.read_bytes()
-            self.l1.put(key, None, data, exp)
-            return CacheResult(file_id=None, data=data, path=img_path)
-        except Exception:
-          pass
+              return CacheResult(file_id=file_id, data=None, path=None)
+            if data is not None:
+              return CacheResult(file_id=None, data=data, path=None)
+        if img_path.exists() and meta_path.exists():
+          try:
+            meta = json.loads(meta_path.read_text())
+            exp = float(meta.get("expiry_ts", 0.0))
+            file_id = meta.get("file_id")
+            if _is_fresh(exp):
+              if file_id:
+                self.l1.put(key, file_id, None, exp)
+                return CacheResult(file_id=file_id, data=None, path=img_path)
+              data = img_path.read_bytes()
+              self.l1.put(key, None, data, exp)
+              return CacheResult(file_id=None, data=data, path=img_path)
+          except Exception:
+            pass
 
-      # Fetch
-      data = await asyncio.to_thread(_call_producer, producer)
-      # Write atomically to L2
-      tmp = img_path.with_suffix(".tmp")
-      tmp.write_bytes(data)
-      os.replace(tmp, img_path)
+        # Fetch
+        data = await asyncio.to_thread(_call_producer, producer)
+        # Write atomically to L2
+        tmp = img_path.with_suffix(".tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, img_path)
 
-      meta = {
-        "expiry_ts": expiry_ts,
-        "file_id": None,
-        "byte_len": len(data),
-        "created_ts": time.time(),
-        "last_used_ts": time.time(),
-      }
-      tmpm = meta_path.with_suffix(".tmp.json")
-      tmpm.write_text(json.dumps(meta, separators=(",", ":"), ensure_ascii=False))
-      os.replace(tmpm, meta_path)
+        meta = {
+          "expiry_ts": expiry_ts,
+          "file_id": None,
+          "byte_len": len(data),
+          "created_ts": time.time(),
+          "last_used_ts": time.time(),
+        }
+        tmpm = meta_path.with_suffix(".tmp.json")
+        tmpm.write_text(json.dumps(meta, separators=(",", ":"), ensure_ascii=False))
+        os.replace(tmpm, meta_path)
 
-      # Put into L1
-      self.l1.put(key, None, data, expiry_ts)
+        # Put into L1
+        self.l1.put(key, None, data, expiry_ts)
 
-      # Async janitor
-      asyncio.create_task(self._janitor())
+        # Async janitor
+        asyncio.create_task(self._janitor())
 
-      return CacheResult(file_id=None, data=data, path=img_path)
+        return CacheResult(file_id=None, data=data, path=img_path)
+    finally:
+      try:
+        lk = self._locks.get(key)
+        if lk is lock and not lk.locked():
+          self._locks.pop(key, None)
+      except Exception:
+        pass
 
   async def remember_file_id(self, key_parts: Dict[str, Any], file_id: str, ttl: int):
     key = self._key_str(key_parts)

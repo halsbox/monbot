@@ -546,12 +546,12 @@ _FUNC_ITEM_RE = re.compile(
     """,
   re.VERBOSE,
 )
-_BRACED_REF_RE = re.compile(r"\{[^}]+\}")  # legacy/alternate form
+_BRACED_REF_RE = re.compile(r"\{[^}]+}")  # legacy/alternate form
 
 
 def _parse_thresholds_from_expression(expanded_expr: str) -> list[float]:
   """
-  Collapse any item function call (avg(/host/key,...), last(/host/key), etc) to 'F',
+  Collapse any item function call (avg(/host/key,...), last(/host/key), etc.) to 'F',
   and extract numeric constants compared to F:
     F < number, F <= number, number >= F, etc.
   Returns unique thresholds in order of appearance.

@@ -21,6 +21,7 @@ ZABBIX_USER = os.getenv("ZABBIX_USER", "api_tg")
 ZABBIX_PASS = os.getenv("ZABBIX_PASS", "change-me")
 ZABBIX_API_TOKEN = os.getenv("ZABBIX_API_TOKEN", "")  # recommended to set
 ZABBIX_VERIFY_SSL = _bool(os.getenv("ZABBIX_VERIFY_SSL", "true"), True)
+ZABBIX_HTTP_TIMEOUT = int(os.getenv("ZABBIX_HTTP_TIMEOUT", "30"))
 
 # How to send API token: 'auto' (try header then body), 'header', 'body'
 ZABBIX_TOKEN_MODE = os.getenv("ZABBIX_TOKEN_MODE", "auto").lower()
@@ -39,6 +40,10 @@ except Exception:
 INITIAL_ADMINS = os.getenv("INITIAL_ADMINS", "395544470,839618968,226090226")
 INITIAL_ADMINS = [int(x.strip()) for x in INITIAL_ADMINS.split(",") if x.strip().isdigit()]
 
+CACHE_L1_MAX_MB = int(os.getenv("CACHE_L1_MAX_MB", "128"))
+CACHE_L2_MAX_MB = int(os.getenv("CACHE_L2_MAX_MB", "1000"))
+IMAGE_CACHE_RV = os.getenv("IMAGE_CACHE_RV", "r10")
+
 # UI and graph defaults
 TIME_RANGES = ["1w", "48h", "24h", "12h", "6h", "3h", "1h", "30m", "15m"]
 IMG_WIDTH = int(os.getenv("IMG_WIDTH", "512"))
@@ -47,6 +52,8 @@ IMG_HEIGHT = int(os.getenv("IMG_HEIGHT", "512"))
 MAINT_LIST_LIMIT = int(os.getenv("MAINT_LIST_LIMIT", "5"))
 DEFAULT_TZ = os.getenv("DEFAULT_TZ", "Europe/Moscow")
 MAINT_TAG_KEY = os.getenv("MAINT_TAG_KEY", "channel")
+MAINT_DEFAULT_PAST_START_SEC = int(os.getenv("MAINT_DEFAULT_PAST_START_SEC", "86400"))
+MAINT_MIN_PERIOD_SEC = int(os.getenv("MAINT_MIN_PERIOD_SEC", "300"))
 ITEMS_REFRESH_SEC = int(os.getenv("ITEMS_REFRESH_SEC", "3600"))
 
 # Report storage and cache
@@ -60,3 +67,6 @@ REPORT_DASHBOARD_ID = int(os.getenv("REPORT_DASHBOARD_ID", "19"))
 # Reports pre-generation (how many completed periods back to ensure)
 REPORT_PREGEN_WEEKS = int(os.getenv("REPORT_PREGEN_WEEKS", "8"))
 REPORT_PREGEN_MONTHS = int(os.getenv("REPORT_PREGEN_MONTHS", "12"))
+
+AUDIT_LIST_LIMIT = int(os.getenv("AUDIT_LIST_LIMIT", "10"))
+

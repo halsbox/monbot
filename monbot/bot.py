@@ -24,7 +24,7 @@ from monbot.cache2 import ImageCache2
 from monbot.config import *
 from monbot.graph_service import GraphService
 from monbot.handlers.commands import (
-  adduser, deluser, report_send_action, setrole,
+  adduser, audit_cmd, deluser, report_send_action, setrole,
   help_cmd, invgen, listusers,
   refresh, report_cmd, report_confirm_action,
   settz, start_graphs, start_maint,
@@ -68,10 +68,16 @@ async def post_init(application: Application) -> None:
     api_token=ZABBIX_API_TOKEN,
     verify=ZABBIX_VERIFY_SSL,
   )
+  if ZABBIX_USER == "api_tg" and ZABBIX_PASS == "change-me":
+    logger.warning("Zabbix credentials are defaults; do not use in production.")
   # Blocking zabbix login off the loop
   await asyncio.to_thread(zbx.login)
 
-  cache2 = ImageCache2(CACHE_DIR)
+  cache2 = ImageCache2(
+    CACHE_DIR,
+    l1_max_bytes=CACHE_L1_MAX_MB * 1024 * 1024,
+    l2_max_bytes=CACHE_L2_MAX_MB * 1024 * 1024,
+  )
   zbx_client = ZbxDataClient(zbx)
   renderer = SkiaRenderer()
   gsvc = GraphService(zbx_client, cache2, renderer)
@@ -91,6 +97,7 @@ async def post_init(application: Application) -> None:
     try:
       await items.refresh()
     except Exception:
+      logger.exception("Failed to refresh items")
       pass
 
   async def _reports_job(ctx: CallbackContext):
@@ -130,6 +137,7 @@ async def post_init(application: Application) -> None:
       try:
         await svc.ensure_report_file(db, REPORT_DASHBOARD_ID, "week", period, REPORT_STORAGE_DIR)
       except Exception:
+        logger.exception("Failed to generate report")
         pass
 
     # Months: last REPORT_PREGEN_MONTHS completed months
@@ -143,6 +151,7 @@ async def post_init(application: Application) -> None:
       try:
         await svc.ensure_report_file(db, REPORT_DASHBOARD_ID, "month", period, REPORT_STORAGE_DIR)
       except Exception:
+        logger.exception("Failed to generate report")
         pass
 
   application.job_queue.run_once(_pregen_reports_job, when=1)
@@ -179,6 +188,7 @@ def main() -> None:
   application.add_handler(CommandHandler("setrole", setrole))
   application.add_handler(CommandHandler("listusers", listusers))
   application.add_handler(CommandHandler("report", report_cmd))
+  application.add_handler(CommandHandler("audit", audit_cmd))
 
   application.add_handler(CommandHandler("refresh", refresh))
   conv_handler = ConversationHandler(

@@ -8,7 +8,8 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import CallbackContext, ConversationHandler
 
-from monbot.config import REPORT_DASHBOARD_ID, REPORT_PREGEN_MONTHS, REPORT_PREGEN_WEEKS, REPORT_STORAGE_DIR
+from monbot.config import AUDIT_LIST_LIMIT, REPORT_DASHBOARD_ID, REPORT_PREGEN_MONTHS, REPORT_PREGEN_WEEKS, \
+  REPORT_STORAGE_DIR
 from monbot.db import UserDB
 from monbot.graph_service import GraphService
 from monbot.handlers.common import escape_markdown_v2, format_duration, get_tz, is_allowed_user
@@ -439,3 +440,43 @@ async def report_send_action(update: Update, context: CallbackContext):
       msg = await q.message.reply_document(document=f, filename=Path(path).name, caption=caption)
     if msg and msg.document:
       await db.set_report_file_id(REPORT_DASHBOARD_ID, period_type, start_ts, msg.document.file_id)
+
+async def audit_cmd(update: Update, context: CallbackContext):
+  global msg
+  db: UserDB = context.application.bot_data[CTX_DB]
+  user = update.effective_user
+  if not await db.is_admin(user.id):
+    return
+  args = context.args or []
+  filter_text = " ".join(args).strip() if args else None
+  limit = AUDIT_LIST_LIMIT
+  rows = await db.list_maint_audit(limit=limit, filter_text=filter_text if filter_text else None)
+  if not rows:
+    await update.message.reply_text(AUDIT_EMPTY)
+    return
+
+  tz = await get_tz(update, context)
+
+  lines: list[str] = []
+  for ts_str, action, username, item_name, host_name, start_ts, end_ts in rows:
+    try:
+      dt_utc = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=ZoneInfo("UTC"))
+      dt_loc = dt_utc.astimezone(tz)
+      dt_s = dt_loc.strftime(AUDIT_LINE_DT_FMT)
+    except Exception:
+      dt_s = ts_str
+
+    verb = AUDIT_VERBS.get(action, action)
+
+    if start_ts and end_ts:
+      s_local = datetime.fromtimestamp(int(start_ts), tz).strftime(DT_FMT)
+      e_local = datetime.fromtimestamp(int(end_ts), tz).strftime(DT_FMT)
+      period = f"{s_local} - {e_local}"
+    else:
+      period = "-"
+
+    item_disp = escape_markdown_v2(item_name or "(item)")
+    host_disp = escape_markdown_v2(host_name or "(host)")
+    lines.append(
+      AUDIT_LINE_FMT.format(dt=dt_s, item=item_disp, host=host_disp, user=username, verb=verb, period=period))
+  await update.message.reply_text(escape_markdown_v2("\n\n".join(lines)), parse_mode=ParseMode.MARKDOWN_V2)
