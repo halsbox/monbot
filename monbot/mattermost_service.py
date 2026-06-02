@@ -84,11 +84,11 @@ class MattermostIntegration:
     if not MM_PUBLIC_URL:
       raise RuntimeError("MM_PUBLIC_URL/MM_CALLBACK_BASE_URL not set")
 
+    self.secret = MM_WEBHOOK_SECRET
     self.public_url = MM_PUBLIC_URL.rstrip("/")
     self.command_url = self._build_callback_url("command")
     self.action_url = self._build_callback_url("action")
     self.dialog_url = self._build_callback_url("dialog")
-    self.secret = MM_WEBHOOK_SECRET
     self.command_token = MM_COMMAND_TOKEN
     if not self.command_token:
       logger.warning("MM_COMMAND_TOKEN is not set; slash command requests will not be authenticated")
