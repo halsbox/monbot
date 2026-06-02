@@ -173,6 +173,8 @@ def main() -> None:
   application = (
     Application.builder()
     .token(TELEGRAM_TOKEN)
+    .read_timeout(30)
+    .write_timeout(30)
     .post_init(post_init)  # <- will run before polling starts
     .build()
   )
