@@ -22,8 +22,9 @@ from pathlib import Path
 from monbot.db import UserDB
 from monbot.handlers.texts import DT_FMT
 from monbot.config import DEFAULT_TZ, REPORT_META_TTL_SEC, REPORT_WIDGETS_TTL_SEC, REPORT_STORAGE_DIR, REPORT_DASHBOARD_ID
+from monbot.render import SkiaRenderer
 from monbot.zabbix import ZabbixWeb
-from monbot.zbx_data import fmt_dt_chart2, fmt_uptime
+from monbot.zbx_data import GraphItemSig, GraphSignature, ZbxDataClient, downsample_for_width, fmt_dt_chart2, fmt_uptime
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +73,12 @@ class ReportService:
   def __init__(self, zbx: ZabbixWeb, tz: Optional[ZoneInfo] = None):
     self.zbx = zbx
     self.tz = tz or ZoneInfo(DEFAULT_TZ)
+    self.zbx_data = ZbxDataClient(zbx)
+    self.renderer = SkiaRenderer()
     self._ensure_fonts()
     self._meta_cache: dict[int, tuple[float, dict]] = {}
     self._pages_cache: dict[int, tuple[float, List[DashboardPage]]] = {}
+    self._svg_item_cache: Dict[Tuple[str, str], Optional[str]] = {}
 
   @staticmethod
   def _ensure_fonts() -> None:
@@ -254,6 +258,133 @@ class ReportService:
     if "image/" not in ctype:
       raise RuntimeError(f"chart.php returned {ctype}: {r.text[:200]}")
     return r.content
+
+  def _resolve_itemid_by_host_and_name(self, host: str, item_name: str) -> Optional[str]:
+    key = (host.strip(), item_name.strip())
+    if key in self._svg_item_cache:
+      return self._svg_item_cache[key]
+    if not key[0] or not key[1]:
+      self._svg_item_cache[key] = None
+      return None
+
+    hosts = self.zbx.api_request("host.get", {
+      "output": ["hostid", "host"],
+      "filter": {"host": [key[0]]},
+      "limit": 1,
+    })
+    if not hosts:
+      self._svg_item_cache[key] = None
+      return None
+    hostid = str(hosts[0].get("hostid") or "")
+    if not hostid:
+      self._svg_item_cache[key] = None
+      return None
+
+    items = self.zbx.api_request("item.get", {
+      "output": ["itemid", "name"],
+      "hostids": [hostid],
+      "filter": {"name": [key[1]]},
+      "limit": 1,
+    })
+    if not items:
+      items = self.zbx.api_request("item.get", {
+        "output": ["itemid", "name"],
+        "hostids": [hostid],
+        "search": {"name": key[1]},
+        "sortfield": "itemid",
+        "sortorder": "ASC",
+        "limit": 20,
+      })
+    if not items:
+      self._svg_item_cache[key] = None
+      return None
+
+    chosen = items[0]
+    itemid = str(chosen.get("itemid") or "")
+    self._svg_item_cache[key] = itemid or None
+    return self._svg_item_cache[key]
+
+  def _svggraph_series_specs(self, params: Dict[str, Any]) -> List[Tuple[str, str, str]]:
+    idxs = set()
+    for k in params.keys():
+      m = re.match(r"^ds\.items\.(\d+)\.0$", str(k))
+      if m:
+        idxs.add(int(m.group(1)))
+    out: List[Tuple[str, str, str]] = []
+    for i in sorted(idxs):
+      host = str(params.get(f"ds.hosts.{i}.0") or "").strip()
+      item_name = str(params.get(f"ds.items.{i}.0") or "").strip()
+      itemid = self._resolve_itemid_by_host_and_name(host, item_name)
+      if not itemid:
+        continue
+      color = str(params.get(f"ds.color.{i}") or "000000").strip().lstrip("#")
+      if not re.match(r"^[0-9A-Fa-f]{6}$", color):
+        color = "000000"
+      out.append((itemid, color.upper(), item_name))
+    return out
+
+  def _svggraph_itemids(self, params: Dict[str, Any]) -> List[str]:
+    return [itemid for itemid, _color, _item_name in self._svggraph_series_specs(params)]
+
+  def _svggraph_png_via_api(
+      self,
+      series_specs: List[Tuple[str, str, str]],
+      t_from: int,
+      t_to: int,
+      width: int,
+      height: int,
+  ) -> bytes:
+    itemids = [itemid for itemid, _color, _name in series_specs]
+    meta = self.zbx.api_request(
+      "item.get",
+      {"output": ["itemid", "name", "units", "value_type"], "itemids": itemids}
+    )
+    meta_by_id = {str(it.get("itemid") or ""): it for it in meta}
+
+    sig_items: List[GraphItemSig] = []
+    for order, (itemid, color, fallback_name) in enumerate(series_specs):
+      it = meta_by_id.get(itemid)
+      if not it:
+        continue
+      sig_items.append(
+        GraphItemSig(
+          itemid=itemid,
+          color=color,
+          calc_fnc=2,
+          drawtype=0,
+          sortorder=order,
+          name=str(it.get("name") or fallback_name or itemid),
+          units=str(it.get("units") or ""),
+          value_type=int(it.get("value_type", 0) or 0),
+        )
+      )
+
+    if not sig_items:
+      raise RuntimeError("No svggraph items resolved")
+
+    sig = GraphSignature(
+      graphid=f"svg:{','.join([it.itemid for it in sig_items])}",
+      name="svggraph",
+      items=tuple(sig_items),
+    )
+    series = self.zbx_data.fetch_series(sig, t_from, t_to)
+    envs = downsample_for_width(sig, series, t_from, t_to, width)
+    series_list = [
+      (it.itemid, it.color, it.calc_fnc, it.drawtype, it.sortorder, it.name, it.units)
+      for it in sig.items
+    ]
+
+    return self.renderer.render_png(
+      sig_graphid=sig.graphid,
+      series_list=series_list,
+      envelopes=envs,
+      t_from=t_from,
+      t_to=t_to,
+      width=width,
+      height=height,
+      trigger_lines=None,
+      tz=self.tz,
+    )
 
   # ---------- API helpers for various widgets ----------
 
@@ -610,6 +741,18 @@ class ReportService:
                 img = self._chart_items_png([itemid], period.start_ts, period.end_ts, req_w, req_h)
                 self._draw_image_fill(c, img, wx, wy_top, inner_w, inner_h, pad_top)
                 continue
+
+          if wtype in ("svggraph", "widget.svggraph"):
+            series_specs = self._svggraph_series_specs(w.params)
+            if series_specs:
+              req_w, req_h, inner_w, inner_h = self._px_dims(ww, wh, pad_top)
+              try:
+                img = self._svggraph_png_via_api(series_specs, period.start_ts, period.end_ts, req_w, req_h)
+              except Exception:
+                itemids = [itemid for itemid, _color, _name in series_specs]
+                img = self._chart_items_png(itemids, period.start_ts, period.end_ts, req_w, req_h)
+              self._draw_image_fill(c, img, wx, wy_top, inner_w, inner_h, pad_top)
+              continue
 
           if wtype in ("problemsbysv", "problems_severity"):
             counts = self._problems_totals(w.params)

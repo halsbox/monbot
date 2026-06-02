@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 from zoneinfo import ZoneInfo
@@ -16,6 +17,12 @@ from monbot.zabbix import ZabbixWeb
 logger = logging.getLogger(__name__)
 
 def main():
+  parser = argparse.ArgumentParser(description="Generate dashboard PDF report")
+  parser.add_argument("--period", choices=["week", "month"], default="week")
+  parser.add_argument("--dashboard-id", type=int, default=REPORT_DASHBOARD_ID)
+  parser.add_argument("--out", default="", help="Optional output PDF path")
+  args = parser.parse_args()
+
   zbx = ZabbixWeb(
     server=ZABBIX_URL,
     username=ZABBIX_USER,
@@ -26,9 +33,12 @@ def main():
   zbx.login()
 
   svc = ReportService(zbx, tz=ZoneInfo(DEFAULT_TZ))
-  period = svc.last_month_period()
-  out = os.path.abspath(f"zbx_report_{period.label.replace(' ', '_')}.pdf")
-  svc.generate_dashboard_pdf(REPORT_DASHBOARD_ID, period, out)
+  period = svc.last_week_period() if args.period == "week" else svc.last_month_period()
+  if args.out:
+    out = os.path.abspath(args.out)
+  else:
+    out = os.path.abspath(f"zbx_report_{args.period}_{period.label.replace(' ', '_')}.pdf")
+  svc.generate_dashboard_pdf(args.dashboard_id, period, out)
   print(f"Report generated: {out}")
 
 
