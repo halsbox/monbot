@@ -54,6 +54,9 @@ class MattermostAPI:
   def get_team(self, team_id: str) -> dict[str, Any]:
     return self.request("GET", f"/teams/{team_id}").json()
 
+  def get_channel(self, channel_id: str) -> dict[str, Any]:
+    return self.request("GET", f"/channels/{channel_id}").json()
+
   def list_commands(self, team_id: str, custom_only: bool = True) -> list[dict[str, Any]]:
     return self.request("GET", "/commands", params={"team_id": team_id, "custom_only": str(custom_only).lower()}).json()
 

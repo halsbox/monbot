@@ -118,7 +118,7 @@ def _print_summary(team: dict[str, Any], urls: dict[str, str], bot: dict[str, An
 
 def main(argv: list[str] | None = None) -> int:
   parser = argparse.ArgumentParser(description="Register and sync Mattermost commands for Monbot")
-  parser.add_argument("--token", help="Mattermost personal access token with manage_slash_commands permission")
+  parser.add_argument("--token", help="Mattermost personal access token for a user account with manage_slash_commands permission")
   parser.add_argument("--team", help="Mattermost team name or team ID")
   parser.add_argument("--keep-legacy", action="store_true", help="Do not delete old Monbot slash commands")
   args = parser.parse_args(argv)
@@ -148,6 +148,17 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
   api = MattermostAPI(MM_URL, setup_token)
+
+  try:
+    me = api.get_me()
+  except Exception as exc:
+    print(
+      "Setup token could not authenticate against Mattermost. "
+      "Use a personal access token from a real Mattermost user account, not the bot token or the slash-command token.",
+      file=sys.stderr,
+    )
+    print(f"Original error: {exc}", file=sys.stderr)
+    return 2
 
   team = None
   try:
@@ -213,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Warning: failed to remove legacy command /{cmd.get('trigger')}: {exc}", file=sys.stderr)
 
   _print_summary(team, urls, bot)
+  print(f"  Setup identity: {me.get('username') or me.get('id')}")
   if command_token:
     print(f"  MM_COMMAND_TOKEN={command_token}")
   print()

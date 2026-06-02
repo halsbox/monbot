@@ -211,11 +211,20 @@ class MattermostIntegration:
       return ZoneInfo(DEFAULT_TZ)
 
   def _is_dm(self, payload: dict[str, Any]) -> bool:
-    ctype = str(payload.get("channel_type") or payload.get("channel_type") or payload.get("channel_type") or "")
-    if ctype:
-      return ctype in ("D", "direct", "direct_message")
-    channel_name = str(payload.get("channel_name") or "")
-    return channel_name.startswith("__") or channel_name.startswith("dm")
+    ctype = str(payload.get("channel_type") or "").strip().upper()
+    if ctype in ("D", "DIRECT", "DIRECT_MESSAGE"):
+      return True
+    if ctype in ("O", "P"):
+      return False
+    channel_id = str(payload.get("channel_id") or "").strip()
+    if channel_id:
+      try:
+        channel = self.api.get_channel(channel_id)
+        return str(channel.get("type") or "").strip().upper() == "D"
+      except Exception:
+        logger.debug("Falling back to payload heuristics for channel %s", channel_id, exc_info=True)
+    channel_name = str(payload.get("channel_name") or "").strip().lower()
+    return channel_name.startswith("__") or channel_name.startswith("dm") or channel_name.startswith("@")
 
   def _dm_only_error(self) -> dict[str, Any]:
     return {"response_type": "ephemeral", "text": "Use this bot in a direct message only."}
