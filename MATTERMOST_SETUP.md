@@ -25,6 +25,11 @@ Set these in `.env` or in the deployment environment for the `monbot-mm` service
   - Used by the service to post DMs, upload graph/report files, and edit its own posts.
   - Format: the long token string shown once at bot creation time.
 
+- `MM_COMMAND_TOKEN`
+  - The token Mattermost generated for the `/monbot` slash command.
+  - Used by the service to verify incoming slash-command requests.
+  - The setup script prints this value after registering the command.
+
 - `MM_PUBLIC_URL`
   - The public URL of the Monbot Mattermost integration service.
   - This must be reachable by Mattermost and by the browser that opens graph/report assets.
@@ -77,6 +82,7 @@ Minimum runtime values:
 - `MM_URL`
 - `MM_TEAM`
 - `MM_BOT_TOKEN`
+- `MM_COMMAND_TOKEN`
 - `MM_PUBLIC_URL`
 
 Recommended runtime values:
@@ -114,7 +120,7 @@ One-time setup value:
   - Put the output string into `.env`.
 
 - `MM_SETUP_TOKEN`
-  - Create a Mattermost personal access token for your admin user.
+- Create a Mattermost personal access token for your admin user.
   - The token must have enough permission to manage slash commands for the selected team.
   - Use it only for the setup script.
 
@@ -144,6 +150,7 @@ One-time setup value:
    - create or update the single `/monbot` slash command
    - remove old Monbot slash commands that still point at the same integration URL
    - print the exact command/action/dialog/asset URLs
+   - print `MM_COMMAND_TOKEN` for copy/paste into your runtime env
 
 5. Restart or redeploy `monbot-mm` if you changed environment values.
 6. Test in a direct message with:

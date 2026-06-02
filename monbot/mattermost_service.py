@@ -21,6 +21,7 @@ from monbot.config import (
   MAINT_LIST_LIMIT,
   MAINT_TAG_KEY,
   MM_BOT_TOKEN,
+  MM_COMMAND_TOKEN,
   MM_CACHE_DIR,
   MM_DB_PATH,
   MM_INITIAL_ADMINS,
@@ -88,6 +89,11 @@ class MattermostIntegration:
     self.action_url = self._build_callback_url("action")
     self.dialog_url = self._build_callback_url("dialog")
     self.secret = MM_WEBHOOK_SECRET
+    self.command_token = MM_COMMAND_TOKEN
+    if not self.command_token:
+      logger.warning("MM_COMMAND_TOKEN is not set; slash command requests will not be authenticated")
+    if not self.secret:
+      logger.warning("MM_WEBHOOK_SECRET is not set; action/dialog requests will not be protected by a shared secret")
 
     self.api = MattermostAPI(MM_URL, MM_BOT_TOKEN)
     self.db = MattermostDB(MM_DB_PATH)
@@ -141,6 +147,9 @@ class MattermostIntegration:
 
   def _button(self, label: str, action: str, context: dict[str, Any], *, tooltip: str = "",
               style: str = "default") -> dict[str, Any]:
+    ctx = dict(context)
+    if self.secret:
+      ctx.setdefault("auth", self.secret)
     return {
       "id": re.sub(r"[^a-zA-Z0-9]", "", f"{action}_{label}_{context.get('itemid','')}_{context.get('hostid','')}" )[:190] or action,
       "name": label,
@@ -148,7 +157,7 @@ class MattermostIntegration:
       "style": style,
       "integration": {
         "url": self.action_url,
-        "context": {"action": action, **context},
+        "context": {"action": action, **ctx},
       },
     }
 
@@ -211,9 +220,26 @@ class MattermostIntegration:
   def _dm_only_error(self) -> dict[str, Any]:
     return {"response_type": "ephemeral", "text": "Use this bot in a direct message only."}
 
-  async def handle_command(self, payload: dict[str, Any]) -> dict[str, Any]:
+  def _verify_command_token(self, payload: dict[str, Any], headers: dict[str, Any] | None = None) -> bool:
+    if not self.command_token:
+      return True
+    token = str(payload.get("token") or "")
+    if token and token == self.command_token:
+      return True
+    auth = ""
+    if headers:
+      auth = str(headers.get("Authorization") or headers.get("authorization") or "")
+    if auth.lower().startswith("bearer "):
+      auth = auth.split(" ", 1)[1].strip()
+    elif auth.lower().startswith("token "):
+      auth = auth.split(" ", 1)[1].strip()
+    return bool(auth and auth == self.command_token)
+
+  async def handle_command(self, payload: dict[str, Any], headers: dict[str, Any] | None = None) -> dict[str, Any]:
     if not self._is_dm(payload):
       return self._dm_only_error()
+    if not self._verify_command_token(payload, headers):
+      return {"response_type": "ephemeral", "text": "Unauthorized request."}
 
     command = str(payload.get("command") or "").lstrip("/")
     text = str(payload.get("text") or "").strip()
@@ -815,6 +841,7 @@ class MattermostIntegration:
         "itemid": itemid,
         "post_id": payload.get("post_id"),
         "channel_id": payload.get("channel_id"),
+        "auth": self.secret if self.secret else "",
       }),
     }
     self.api.open_dialog(str(payload.get("trigger_id") or ""), self.dialog_url, dialog)
@@ -853,6 +880,8 @@ class MattermostIntegration:
       state_obj = {}
     if state_obj.get("action") != "maint_new":
       return {"type": "ok"}
+    if self.secret and str(state_obj.get("auth") or "") != self.secret:
+      return {"error": "Unauthorized request"}
     user_id = str(payload.get("user_id") or "")
     if not await self.db.is_maintainer(user_id):
       return {"error": "Insufficient permissions"}

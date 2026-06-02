@@ -86,7 +86,7 @@ def _make_handler(integration: MattermostIntegration):
 
       try:
         if sub == "/command":
-          resp = asyncio.run(integration.handle_command(payload))
+          resp = asyncio.run(integration.handle_command(payload, dict(self.headers)))
           return _json_response(self, 200, resp)
         if sub == "/action":
           resp = asyncio.run(integration.handle_action(payload))

@@ -107,6 +107,7 @@ def _print_summary(team: dict[str, Any], urls: dict[str, str], bot: dict[str, An
   print(f"  Dialog endpoint: {urls['dialog_url']}")
   print(f"  Asset endpoint pattern: {urls['asset_url']}")
   print("  Slash command to register: /monbot")
+  print("  Runtime token to set: MM_COMMAND_TOKEN=<token from the command object>")
   print("  Suggested usage:")
   print("    /monbot help")
   print("    /monbot graphs")
@@ -191,6 +192,12 @@ def main(argv: list[str] | None = None) -> int:
       updated = created
     print(f"Created slash command /{updated.get('trigger')} ({updated.get('id')})")
 
+  command_token = ""
+  if existing_monbot and existing_monbot.get("token"):
+    command_token = str(existing_monbot.get("token"))
+  elif updated.get("token"):
+    command_token = str(updated.get("token"))
+
   if not args.keep_legacy:
     legacy = [
       cmd for cmd in existing
@@ -206,6 +213,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Warning: failed to remove legacy command /{cmd.get('trigger')}: {exc}", file=sys.stderr)
 
   _print_summary(team, urls, bot)
+  if command_token:
+    print(f"  MM_COMMAND_TOKEN={command_token}")
   print()
   print("Next step: configure Mattermost to point the /monbot slash command at the URL above, then restart the monbot-mm service.")
   return 0

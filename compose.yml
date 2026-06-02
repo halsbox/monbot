@@ -53,6 +53,7 @@ services:
       MM_URL: "${MM_URL}"
       MM_TEAM: "${MM_TEAM}"
       MM_BOT_TOKEN: "${MM_BOT_TOKEN}"
+      MM_COMMAND_TOKEN: "${MM_COMMAND_TOKEN:-}"
       MM_PUBLIC_URL: "${MM_PUBLIC_URL:-http://localhost:8088}"
       MM_WEBHOOK_SECRET: "${MM_WEBHOOK_SECRET:-}"
       MM_BIND_HOST: "0.0.0.0"

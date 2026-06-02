@@ -20,6 +20,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")  # required
 MM_URL = os.getenv("MM_URL", "")
 MM_TEAM = os.getenv("MM_TEAM", "")
 MM_BOT_TOKEN = os.getenv("MM_BOT_TOKEN", "")
+MM_COMMAND_TOKEN = os.getenv("MM_COMMAND_TOKEN", "")
 MM_PUBLIC_URL = os.getenv("MM_PUBLIC_URL", os.getenv("MM_CALLBACK_BASE_URL", "")).rstrip("/")
 MM_BIND_HOST = os.getenv("MM_BIND_HOST", "0.0.0.0")
 MM_BIND_PORT = int(os.getenv("MM_BIND_PORT", "8088"))
