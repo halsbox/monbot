@@ -78,11 +78,18 @@ class ImageCache2:
   def _digest(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
 
+  @classmethod
+  def key_digest(cls, key_parts: Dict[str, Any]) -> str:
+    return cls._digest(cls._key_str(key_parts))
+
   def _paths(self, key: str) -> Tuple[Path, Path]:
     d = self._digest(key)
     img = self.cache_dir / f"{d}.png"
     meta = self.cache_dir / f"{d}.json"
     return img, meta
+
+  def paths_for(self, key_parts: Dict[str, Any]) -> Tuple[Path, Path]:
+    return self._paths(self._key_str(key_parts))
 
   async def _janitor(self):
     # Remove old files when exceeding l2_max_bytes.

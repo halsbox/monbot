@@ -37,3 +37,44 @@ services:
       - ./data:/data
       - ./cache:/cache
       - ./reports:/reports
+
+  monbot-mm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PY_VERSION: "3.11"
+        APP_UID: 10001
+    image: monbot:latest
+    container_name: monbot-mm
+    restart: unless-stopped
+    command: ["python", "-m", "monbot.mattermost_bot"]
+    environment:
+      MM_URL: "${MM_URL}"
+      MM_TEAM: "${MM_TEAM}"
+      MM_BOT_TOKEN: "${MM_BOT_TOKEN}"
+      MM_PUBLIC_URL: "${MM_PUBLIC_URL:-http://localhost:8088}"
+      MM_WEBHOOK_SECRET: "${MM_WEBHOOK_SECRET:-}"
+      MM_BIND_HOST: "0.0.0.0"
+      MM_BIND_PORT: "8088"
+      MM_CACHE_DIR: "/mm-cache"
+      MM_DB_PATH: "/data/monbot_mm.db"
+      MONBOT_BASE_DIR: "/data"
+      MONBOT_CACHE_DIR: "/mm-cache"
+      MONBOT_REPORTS_DIR: "/reports"
+      MONBOT_DB_PATH: "/data/monbot_mm.db"
+      ZABBIX_URL: "${ZABBIX_URL:-http://zabbix-web:8080/}"
+      ZABBIX_USER: "${ZABBIX_USER:-api_tg}"
+      ZABBIX_PASS: "${ZABBIX_PASS:-change-me}"
+      ZABBIX_API_TOKEN: "${ZABBIX_API_TOKEN:-}"
+      ZABBIX_VERIFY_SSL: "${ZABBIX_VERIFY_SSL:-true}"
+      ALLOW_HOSTS: "${ALLOW_HOSTS:-{\"10263\":\"RT\",\"10266\":\"Freez\"}}"
+      DEFAULT_TZ: "${DEFAULT_TZ:-Europe/Moscow}"
+      INITIAL_ADMINS: "${INITIAL_ADMINS:-}"
+      MM_INITIAL_ADMINS: "${MM_INITIAL_ADMINS:-}"
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./data:/data
+      - ./mm-cache:/mm-cache
+      - ./reports:/reports

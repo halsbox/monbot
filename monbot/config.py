@@ -12,8 +12,20 @@ def _bool(val: str, default: bool = True) -> bool:
 BASE_DIR = Path(os.getenv("MONBOT_BASE_DIR", ".")).resolve()
 CACHE_DIR = Path(os.getenv("MONBOT_CACHE_DIR", ".cache")).resolve()
 DB_PATH = Path(os.getenv("MONBOT_DB_PATH", BASE_DIR / "monbot.db")).resolve()
+MM_DB_PATH = Path(os.getenv("MM_DB_PATH", BASE_DIR / "monbot_mm.db")).resolve()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")  # required
+
+# Mattermost integration
+MM_URL = os.getenv("MM_URL", "")
+MM_TEAM = os.getenv("MM_TEAM", "")
+MM_BOT_TOKEN = os.getenv("MM_BOT_TOKEN", "")
+MM_PUBLIC_URL = os.getenv("MM_PUBLIC_URL", os.getenv("MM_CALLBACK_BASE_URL", "")).rstrip("/")
+MM_BIND_HOST = os.getenv("MM_BIND_HOST", "0.0.0.0")
+MM_BIND_PORT = int(os.getenv("MM_BIND_PORT", "8088"))
+MM_WEBHOOK_SECRET = os.getenv("MM_WEBHOOK_SECRET", "")
+MM_CACHE_DIR = Path(os.getenv("MM_CACHE_DIR", BASE_DIR / "mm-cache")).resolve()
+MM_INITIAL_ADMINS = [x.strip() for x in os.getenv("MM_INITIAL_ADMINS", "").split(",") if x.strip()]
 
 # Zabbix
 ZABBIX_URL = os.getenv("ZABBIX_URL", "http://zabbix-web:8080/")
