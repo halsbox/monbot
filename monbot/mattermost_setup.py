@@ -92,7 +92,7 @@ def _command_spec(url: str) -> CommandSpec:
     display_name="monbot",
     description="DM-only Monbot integration commands",
     auto_complete_desc="Monbot DM-only integration commands",
-    auto_complete_hint="help | graphs | maint | settz | refresh | report | audit | start | invite | adduser | setrole | listusers | deluser",
+    auto_complete_hint="help | graphs | sensors | maint | settz | refresh | report | audit | start | invite | adduser | setrole | listusers | deluser",
   )
 
 

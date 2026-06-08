@@ -273,6 +273,8 @@ class MattermostIntegration:
       return await self._cmd_help(payload)
     if subcommand == "graphs":
       return await self._cmd_graphs(payload)
+    if subcommand == "sensors":
+      return await self._cmd_sensors(payload)
     if subcommand == "maint":
       return await self._cmd_maint(payload)
     if subcommand == "settz":
@@ -332,6 +334,57 @@ class MattermostIntegration:
     else:
       text = HELP_VIEWER
     return {"response_type": "ephemeral", "text": text}
+
+  @staticmethod
+  def _fmt_sensor_value(item: dict[str, Any]) -> str:
+    raw = str(item.get("lastvalue") or item.get("last_value") or "").strip()
+    if not raw:
+      return "—"
+    try:
+      val = float(raw)
+      if abs(val - round(val)) < 1e-9:
+        return str(int(round(val)))
+      return f"{val:.2f}".rstrip("0").rstrip(".")
+    except Exception:
+      return raw
+
+  @staticmethod
+  def _md_escape_cell(text: str) -> str:
+    return str(text).replace("|", "\\|").replace("\n", " ").strip()
+
+  async def _cmd_sensors(self, payload: dict[str, Any]) -> dict[str, Any]:
+    user_id = _mm_user_id(payload)
+    if not await self.db.role_at_least(user_id, ROLE_VIEWER):
+      return {"response_type": "ephemeral", "text": ACCESS_DENIED}
+
+    items = await asyncio.to_thread(self.zbx.get_items, ALLOW_HOSTS.keys())
+    if not items:
+      return {"response_type": "ephemeral", "text": "Нет датчиков."}
+
+    rows: list[tuple[str, str]] = []
+    for item in items:
+      name = str(item.get("name") or "")
+      value = self._fmt_sensor_value(item)
+      units = str(item.get("units") or "").strip()
+      value_cell = f"{value} {units}".strip() if value != "—" and units else value
+      rows.append((name, value_cell))
+
+    rows.sort(key=lambda r: natural_key(r[0]))
+
+    max_rows = 40
+    lines = ["| Sensor | Value |", "| --- | --- |"]
+    for name, value in rows[:max_rows]:
+      lines.append(
+        "| {sensor} | {value} |".format(
+          sensor=self._md_escape_cell(name),
+          value=self._md_escape_cell(value),
+        )
+      )
+
+    if len(rows) > max_rows:
+      lines.append("")
+      lines.append(f"Показаны первые {max_rows} из {len(rows)} датчиков.")
+    return {"response_type": "ephemeral", "text": "\n".join(lines)}
 
   async def _top_hosts_attachment(self, conv_type: str) -> dict[str, Any]:
     host_names = sorted(list(ALLOW_HOSTS.values()), key=natural_key)
