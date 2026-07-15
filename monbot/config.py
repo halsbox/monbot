@@ -15,6 +15,8 @@ DB_PATH = Path(os.getenv("MONBOT_DB_PATH", BASE_DIR / "monbot.db")).resolve()
 MM_DB_PATH = Path(os.getenv("MM_DB_PATH", BASE_DIR / "monbot_mm.db")).resolve()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")  # required
+TELEGRAM_BASE_URL = os.getenv("TELEGRAM_BASE_URL", "https://botapi.halsbox.io").rstrip("/")
+TELEGRAM_BASE_FILE_URL = os.getenv("TELEGRAM_BASE_FILE_URL", TELEGRAM_BASE_URL).rstrip("/")
 
 # Mattermost integration
 MM_URL = os.getenv("MM_URL", "")

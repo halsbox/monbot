@@ -173,6 +173,8 @@ def main() -> None:
   application = (
     Application.builder()
     .token(TELEGRAM_TOKEN)
+    .base_url(TELEGRAM_BASE_URL)
+    .base_file_url(TELEGRAM_BASE_FILE_URL)
     .read_timeout(30)
     .write_timeout(30)
     .post_init(post_init)  # <- will run before polling starts
