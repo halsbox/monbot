@@ -188,6 +188,7 @@ def main() -> None:
   application.add_handler(CommandHandler("settz", settz))
   application.add_handler(CommandHandler("maint", start_maint))
   application.add_handler(CommandHandler("invgen", invgen))
+  application.add_handler(CommandHandler("invite", invgen))
   application.add_handler(CommandHandler("adduser", adduser))
   application.add_handler(CommandHandler("deluser", deluser))
   application.add_handler(CommandHandler("setrole", setrole))

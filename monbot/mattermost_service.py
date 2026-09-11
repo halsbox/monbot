@@ -307,10 +307,10 @@ class MattermostIntegration:
         "first_name": payload.get("first_name") or row[3],
         "last_name": payload.get("last_name") or row[4],
       })
-      return {"response_type": "ephemeral", "text": START_EXISTING_USER.format(name=f"@{row[2] or user_id}", role=row[1])}
+      return {"response_type": "ephemeral", "text": MM_START_EXISTING_USER.format(name=f"@{row[2] or user_id}", role=row[1])}
 
     if not args:
-      return {"response_type": "ephemeral", "text": START_INVITE_REQUIRED}
+      return {"response_type": "ephemeral", "text": MM_START_INVITE_REQUIRED}
 
     otp = args[0]
     role = await self.db.consume_invite(otp)
@@ -323,16 +323,16 @@ class MattermostIntegration:
       first_name=payload.get("first_name"),
       last_name=payload.get("last_name"),
     )
-    return {"response_type": "ephemeral", "text": START_INVITE_OK_FMT.format(role=role)}
+    return {"response_type": "ephemeral", "text": MM_START_INVITE_OK_FMT.format(role=role)}
 
   async def _cmd_help(self, payload: dict[str, Any]) -> dict[str, Any]:
     role = await self.db.get_role(_mm_user_id(payload)) or ROLE_VIEWER
     if role == ROLE_ADMIN:
-      text = HELP_ADMIN
+      text = MM_HELP_ADMIN
     elif role == ROLE_MAINTAINER:
-      text = HELP_MAINTAINER
+      text = MM_HELP_MAINTAINER
     else:
-      text = HELP_VIEWER
+      text = MM_HELP_VIEWER
     return {"response_type": "ephemeral", "text": text}
 
   @staticmethod
@@ -408,7 +408,7 @@ class MattermostIntegration:
     user_id = _mm_user_id(payload)
     if not args:
       cur = await self.db.get_timezone(user_id)
-      return {"response_type": "ephemeral", "text": SETTZ_CURRENT_FMT.format(tz=cur)}
+      return {"response_type": "ephemeral", "text": MM_SETTZ_CURRENT_FMT.format(tz=cur)}
     tz = args[0]
     try:
       ZoneInfo(tz)
@@ -446,7 +446,7 @@ class MattermostIntegration:
     if not await self.db.role_at_least(user_id, ROLE_VIEWER):
       return {"response_type": "ephemeral", "text": ACCESS_DENIED}
     if not args:
-      return {"response_type": "ephemeral", "text": REPORT_USAGE}
+      return {"response_type": "ephemeral", "text": MM_REPORT_USAGE}
 
     kind_raw = (args[0] or "").lower()
     if kind_raw.startswith(("w", "н")):
@@ -607,7 +607,7 @@ class MattermostIntegration:
     if not await self.db.is_admin(user_id):
       return {"response_type": "ephemeral", "text": ACCESS_DENIED}
     if not args:
-      return {"response_type": "ephemeral", "text": INVGEN_USAGE}
+      return {"response_type": "ephemeral", "text": MM_INVGEN_USAGE}
     role = args[0]
     if role not in VALID_ROLES:
       return {"response_type": "ephemeral", "text": INVALID_ROLE}
@@ -632,7 +632,7 @@ class MattermostIntegration:
     if not await self.db.is_admin(user_id):
       return {"response_type": "ephemeral", "text": ACCESS_DENIED}
     if not args:
-      return {"response_type": "ephemeral", "text": ADDUSER_USAGE}
+      return {"response_type": "ephemeral", "text": MM_ADDUSER_USAGE}
     try:
       uid = args[0]
       role = args[1] if len(args) > 1 else ROLE_VIEWER
@@ -641,14 +641,14 @@ class MattermostIntegration:
       await self.db.ensure_user(uid, role=role)
       return {"response_type": "ephemeral", "text": ADDUSER_OK_FMT.format(uid=uid, role=role)}
     except Exception:
-      return {"response_type": "ephemeral", "text": INVALID_TELEGRAM_ID}
+      return {"response_type": "ephemeral", "text": MM_INVALID_USER_ID}
 
   async def _cmd_setrole(self, payload: dict[str, Any], args: list[str]) -> dict[str, Any]:
     user_id = _mm_user_id(payload)
     if not await self.db.is_admin(user_id):
       return {"response_type": "ephemeral", "text": ACCESS_DENIED}
     if len(args) < 2:
-      return {"response_type": "ephemeral", "text": SETROLE_USAGE}
+      return {"response_type": "ephemeral", "text": MM_SETROLE_USAGE}
     uid = args[0]
     role = args[1]
     if role not in VALID_ROLES:
@@ -676,7 +676,7 @@ class MattermostIntegration:
     if not await self.db.is_admin(user_id):
       return {"response_type": "ephemeral", "text": ACCESS_DENIED}
     if not args:
-      return {"response_type": "ephemeral", "text": DELUSER_USAGE}
+      return {"response_type": "ephemeral", "text": MM_DELUSER_USAGE}
     uid = args[0]
     ok = await self.db.delete_user(uid)
     return {"response_type": "ephemeral", "text": DELUSER_OK_FMT.format(uid=uid, ok=ok)}
